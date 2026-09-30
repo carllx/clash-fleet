@@ -1,7 +1,7 @@
 # Gate B: Windows 平台差异与生效生命周期验证报告 (Windows Platform-Delta Findings)
 
 - **调研角色**: Windows Platform Lead & Agentic Team
-- **文档状态**: 调研成果持久化沉淀 (Durable Research Artifact)
+- **文档状态**: 调研成果持久化沉淀 (Durable Research Artifact - Revised)
 - **基准提交 (Base)**: `main @ 4a75575af28422ce5888a9d768edbc09f53abe98`
 - **对应分支 (Branch)**: `prototype/deploy-gate-windows`
 - **已验收 macOS 参照基线**: `prototype/deploy-gate-macos @ 1385f5d39dd3403a22dd57da297fb1c259bc63e2`
@@ -17,11 +17,12 @@
 ### 核心判定与物证概览
 | 验证维度 | 判定分类 / 结论 | 证据级别 | 核心实测 / 源码事实物证 |
 |---|---|:---:|---|
-| **CVR 源码版本同源性** | **`SOURCE_PARITY_IDENTICAL`** | Source-verified | 本地安装版本 2.5.6，对应官方发布提交 `b057bd964ccd156f68bc43a3a8ed66cf3cb1cd7b`；与 macOS 验收基线在 4 个核心生命周期文件中 100% blob-identical |
-| **Windows 文件替换行为** | **`DIRECT_WRITE_OK`**<br>(同时支持 `ATOMIC_REPLACE_OK`) | Host-observed | CVR 运行时直接文件覆盖与 `os.replace` 原子替换均成功，**未遭遇 `ERROR_SHARING_VIOLATION` 或文件锁拦截**；NTFS ACL 权限完整保留 |
+| **CVR 源码版本同源性** | **`SOURCE_PARITY_IDENTICAL`** | Source-verified | 本地安装版本 2.5.6，对应官方发布提交 `b057bd964ccd156f68bc43a3a8ed66cf3cb1cd7b`；与主线 anchor `c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84` 在 4 个核心生命周期文件中 100% blob-identical |
+| **Windows 文件替换行为** | **`DIRECT_WRITE_OK`**<br>(同时支持 `ATOMIC_REPLACE_OK`) | Host-observed | CVR 运行时直接文件覆盖与 `os.replace` 原子替换均成功，**未遭遇 `ERROR_SHARING_VIOLATION` 或文件锁拦截**；CVR 常驻态不持有文件句柄 |
+| **ACL 权限纪律** | **`REPORTED / NOT CAPTURED BY REPRODUCIBLE PROBE`** | Reported (Host PowerShell) | 现场 PowerShell `Get-Acl` 实测显示 `FullControl` SDDL 保持一致；但 probe 脚本内未做 Win32 自动化断言，按纪律降级标定 |
 | **被动文件替换生命周期** | **`NO_AUTO_APPLY_OBSERVED`** | Host-observed | 外部静默更新 `profiles/Script.js` 后，5s 内 `clash-verge.yaml` 的 mtime 与 SHA 完全未动，未感知脚本更新，与 macOS 一致 |
 | **确证的无头生效触发** | **`CONFIRMED_HEADLESS_TRIGGER = Elevated Process Restart`** | Host-observed / Source-verified | 因 `HKLM\...\AppCompatFlags\Layers` 配置了 `~ RUNASADMIN`，CVR GUI 运行于 High Integrity；普通进程无法 `taskkill`，外部拉起需管理员提权或提权计划任务 |
-| **服务连续性差异 (Service Continuity Delta)** | **`SIDECAR_CORE_RESTART_OBSERVED`** | Host-observed / Source-verified | 本机未安装 CVR Service，运行于 **Sidecar 模式**（`verge-mihomo.exe` 为 GUI 进程直接子进程）；GUI 重启必然导致内核进程重拉起与 TUN 适配器短时重建 |
+| **服务连续性差异 (Service Continuity Delta)** | **`SIDECAR_CORE_RESTART_OBSERVED`** | Host-observed (Sidecar) / Inferred (Service) | 本机未安装 CVR Service，运行于 **Sidecar 模式**（`verge-mihomo.exe` 为 GUI 进程直接子进程）；GUI 重启实测必然导致内核重启与 TUN 重建；Service Mode 零中断仅作为未来候选假说 |
 | **非法脚本运行态测试** | **`NOT REQUIRED`** | Policy Rule | 安装版本与源码同源无分歧，共享 Boa `use_script` 降级逻辑已在 macOS 确证且源码支持，安全免除破坏性 live probe |
 | **基线还原与网络验证** | **`PASS`** | Host-observed | byte-for-byte 还原原始 `Script.js`，SHA-256 强校验完全一致；live proxy 流量持续正常 (HTTP 204) |
 
@@ -69,13 +70,13 @@ Network & Traffic Topology:
 ## 3. 源码一致性与可审计性 (Source Parity & Auditability)
 
 - **本地安装版本**: Clash Verge Rev `2.5.6`；
-- **官方发布对应 Ref**: `b057bd964ccd156f68bc43a3a8ed66cf3cb1cd7b` (与 macOS 现场版本完全一致)；
-- **核心文件 Blob 一致性 (Source-verified)**:
-  与 Architecture Survey 锚定主线提交 `c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84` 相比，CVR 在处理扩展脚本及保存校验的核心 Rust 代码上具有 100% 精确一致性：
-  1. `src-tauri/src/enhance/mod.rs` (blob: `56102aa8...`)
-  2. `src-tauri/src/enhance/script.rs` (blob: `ce13d42f...`)
-  3. `src-tauri/src/enhance/chain.rs` (blob: `a3f9e9cf...`)
-  4. `src-tauri/src/cmd/save_profile.rs` (blob: `483fa99a...`)
+- **官方发布对应 Ref**: `b057bd964ccd156f68bc43a3a8ed66cf3cb1cd7b` (发布于 2026-09-26)；
+- **精确 Git Blob SHA 一致性 (Source-verified)**:
+  与 Architecture Survey 锚定主线提交 `c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84` 相比，CVR 在处理扩展脚本及保存校验的核心 Rust 代码在两个 refs 之间具有 **100% 精确 Git blob 一致性 (blob-identical)**：
+  1. `src-tauri/src/enhance/mod.rs` $\to$ `02cc573203a5959ef25fa7a45a60486b3aadc4ba`
+  2. `src-tauri/src/enhance/script.rs` $\to$ `2aaee11218ac3e7bcf601eac935d0596c68b0dac`
+  3. `src-tauri/src/enhance/chain.rs` $\to$ `797b02cd713ef41b186ea9731379799ccf9e5d5c`
+  4. `src-tauri/src/cmd/save_profile.rs` $\to$ `e1000847f673c683eb22837c38695cd6a48454e9`
 - **跨平台同源判定**:
   配置流水线核心逻辑（读取 `profiles/Script.js` $\to$ Boa 解析 $\to$ 生成 `clash-verge.yaml`）在 Windows 与 macOS 上完全由相同 Rust 源码驱动。
 
@@ -98,8 +99,10 @@ Windows 平台由于 NTFS 驱动层与 Win32 文件共享模型的特殊性，�
 2. **原子替换 (Atomic Replace)**:
    - 写入临时文件 `Script.js.tmp_probe`，通过 Win32 `MoveFileExW` / `os.replace` 原子替换；
    - **结果**: `ATOMIC_REPLACE: SUCCESS`，原子落盘成功；
-3. **ACL 权限与所有权继承**:
-   - 替换前后比对 `Get-Acl` 权限描述符（SDDL: `O:S-1-5-21...`），`BUILTIN\Administrators`、`NT AUTHORITY\SYSTEM` 及当前用户 `carllx` 的 `FullControl` 保持完整继承，未因临时文件重命名发生 ACL 剥离或降级。
+3. **ACL 权限与所有权继承纪律**:
+   - **物证来源**: 在本次验证现场，交互式 PowerShell `Get-Acl` 探查对比了写入前与写入后的权限描述符（SDDL: `O:S-1-5-21-1143672239-3323692552-625498637-1001G:S-1-5-21-1143672239-3323692552-625498637-1001D:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;FA;;;S-1-5-21-1143672239-3323692552-625498637-1001)`），`BUILTIN\Administrators`、`NT AUTHORITY\SYSTEM` 及当前用户 `carllx` 的 `FullControl` 均保持不变；
+   - **纪律标定**: 由于自动化脚本 `probe.py` 本身未集成针对 Win32 ACL 描述符的前后自动化断言，本报告严格将该项标定为：
+     $$\mathbf{ACL\ Behavior} = \mathbf{REPORTED\ (Host\ PowerShell\ observed)\ /\ NOT\ CAPTURED\ BY\ REPRODUCIBLE\ PROBE}$$
 
 ### 4.3 判定结论
 $$\mathbf{Windows\ Script.js\ Replacement} = \mathbf{DIRECT\_WRITE\_OK\ (and\ ATOMIC\_REPLACE\_OK)}$$
@@ -188,22 +191,24 @@ $$\mathbf{CONFIRMED\_HEADLESS\_TRIGGER} = \mathbf{Elevated\ Process\ Restart\ (t
 
 ### 7.1 拓扑模式对比：Sidecar vs Service Mode
 
-| 拓扑属性 | macOS 现状 | Windows (当前主机现场) | Windows (理论 Service Mode) |
+| 拓扑属性 | macOS 现状 (`prototype/deploy-gate-macos`) | Windows (当前主机现场) | Windows (理论 Service Mode) |
 |---|---|---|---|
-| **核心管理模式** | Sidecar 模式 | **Sidecar 模式** | Windows Service 模式 |
-| **内核进程父级** | `Clash Verge.app` 直接衍生 | `clash-verge.exe` 直接衍生 (`ParentProcessId = 17868`) | `clash-verge-service` (SYSTEM 托管) |
-| **GUI 重启对核心影响** | **核心随之重启** | **核心随之重启** | **核心保持存活** (Core Continuous) |
-| **TUN 适配器状态** | 瞬时断开后重新绑定 | 瞬时重建 ("Meta Tunnel" 重启) | TUN 适配器由服务持有，连接不中断 |
-| **网络中断感知 (Outage)** | 短暂抖动 (~1.5s) | 短暂抖动 (~1.5s ~ 2.0s) | 无流量中断 (零感知无头重载) |
+| **核心管理模式** | **Service 模式** (`clash-verge-service`) | **Sidecar 模式** | Windows Service 模式 |
+| **内核进程父级** | `launchd` / Privileged Helper Tool 托管 | `clash-verge.exe` 直接衍生 (`ParentProcessId = 17868`) | `clash-verge-service` (SYSTEM 托管) |
+| **控制通道** | 本地 Unix Domain Socket (`/var/run/.../verge-mihomo.sock`) | Windows 命名管道 (`\\.\pipe\verge-mihomo-sidecar-...`) | IPC / 本地管道 |
+| **GUI 重启对核心影响** | **核心持续运行** (GUI 退出不杀核心) | **核心随之重启** (GUI 进程退出带走子进程) | **预期核心保持存活** (待未来实测验证) |
+| **TUN 适配器状态** | 适配器由系统 Helper 持有保持在线 | 瞬时重建 ("Meta Tunnel" 重启) | 预期由系统服务持有不中断 |
+| **网络中断感知 (Outage)** | **零流量中断** | **实测短暂抖动 (~1.5s ~ 2.0s)** | **假说: 零流量中断** (Inferred) |
 
-### 7.2 现场证据剖析
-1. **主机现场确认**:
-   - `clash-verge-service` 未注册为系统服务；
-   - `verge-mihomo.exe` (PID 11224) 显式为 `clash-verge.exe` (PID 17868) 的子进程；
-   - Mihomo 外部控制器监听在命名管道 `\\.\pipe\verge-mihomo-sidecar-release-...`。
-2. **架构推论 (Inferred)**:
-   - 在当前 Sidecar 模式下，GUI 进程重启与核心进程重启紧密耦合。
-   - **Service Continuity Delta 判定**: 若未来主机启用 CVR Service 模式，GUI 重启将实现真正的核心业务零中断；但若保持当前 Sidecar 模式，GUI 重启会导致内核一同重置，存在约 1.5 秒的 TUN 与代理短暂抖动。
+### 7.2 现场证据剖析与结论分级
+1. **Host-observed (现场实测事实)**:
+   - 当前 Windows 主机运行于 **Sidecar 模式**，`clash-verge-service` 未安装；
+   - `verge-mihomo.exe` (PID 11224) 显式为 `clash-verge.exe` (PID 17868) 的直接子进程；
+   - 在此模式下，GUI 进程重启与核心进程重启强耦合：GUI 退出导致核心随之退出，GUI 拉起重新生成子进程；
+   - 伴随产生 TUN 适配器 ("Meta Tunnel") 的瞬时重置与代理端口 (7897) 短暂连接断开，观测到约 1.5–2.0 秒的路由重置抖动。
+2. **Inferred / Future Verification Candidate (架构假说与未来验证候选)**:
+   - 理论上，若 Windows 主机安装并启用 CVR 官方 `clash-verge-service`（运行于 LocalSystem），Mihomo 将被服务独立接管；
+   - **纪律约束**: 由于本次验证的主机现场未安装 CVR Service，"Windows Service Mode 下 GUI 重启核心完全不掉线 / 零中断" **尚未在 Windows 现场实测验证**，明确归类为 **`Inferred / future verification candidate`**，不能作为当前 Gate B 的 Verified 事实。
 
 ---
 
@@ -238,11 +243,11 @@ Live Connectivity Test    : HTTP/1.1 204 No Content via 127.0.0.1:7897 (PASS)
 基于本次 Windows 现场发现的 Platform Delta，Clash Fleet 客户端部署器针对 Windows 平台应落实以下规范：
 
 1. **落盘策略 (Write Strategy)**:
-   采用 `write to Script.js.tmp` $\to$ `MoveFileEx(MOVEFILE_REPLACE_EXISTING)` 原子替换，利用 `ATOMIC_REPLACE_OK` 特性，规避任何潜在读取冲突并完整保留 NTFS ACL；
+   采用 `write to Script.js.tmp` $\to$ `MoveFileEx(MOVEFILE_REPLACE_EXISTING)` 原子替换，利用 `ATOMIC_REPLACE_OK` 特性，规避任何潜在读取冲突；
 2. **提权感知与权限分级 (Elevation Awareness)**:
    - 部署器必须清晰识别：Windows 上 CVR 重启**必须在管理员提权上下文**下执行；
    - 若部署器作为后台非提权服务运行，无法直接杀死高完整性 CVR 进程；应建议将部署器调度包装为具有最高权限的系统任务（Task Scheduler with `RunLevel: HighestAvailable`）或作为独立 Windows 服务运行；
 3. **单例退出轮询 (Singleton Exit Polling)**:
    部署器终止 CVR 后，必须轮询等待 `singleton-instance.lock` 释放（最多 5s），再拉起新实例，杜绝并发启动冲突；
 4. **服务模式建议 (Future Optimization)**:
-   建议在生产部署指南中推荐用户开启 CVR "Service Mode"，使内核脱离 GUI 独立运行，将 GUI 重启带来的网络抖动降至零。
+   针对追求高可用无感重载的用户，建议后续探索与验证 CVR "Service Mode" 配置，使内核脱离 GUI 独立运行。
