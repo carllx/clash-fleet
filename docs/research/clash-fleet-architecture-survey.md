@@ -2,7 +2,7 @@
 
 - **调研角色**: Browser Lead & Agentic Team
 - **文档状态**: 调研成果持久化沉淀 (Durable Research Artifact - Revised)
-- **基准提交**: `main @ 820481db0b47bb58ac14f5f6af2e697316799be3`
+- **基准提交**: `main @ 4a75575af28422ce5888a9d768edbc09f53abe98`
 - **日期**: 2026-09-30
 
 ---
@@ -148,14 +148,36 @@ flowchart LR
   - **决策分类判定**: `SUPPORTED WITH SMALL ADAPTER`（借助 Rollup AST 级 Scope Hoisting 展开为顶级作用域，经微小的确定性末尾 `export` 剥离适配器原生暴露顶层 `function main`，无 CommonJS 兼容垫片，产物尺寸最小且执行语义摩擦最小）；
   - **架构决策边界**: 该结论是 Build Gate 验证后的推荐候选，**不等于最终生产架构冻结**。
 
-### 5.2 活跃前沿: Gate B: 部署与生效门禁 (Deploy / Apply Gate) — ACTIVE UNRESOLVED
-- **门禁状态**: **ACTIVE UNRESOLVED (下一待解决原型门禁)**
-- **核心目标**: 验证外部适配器在替换 CVR 运行目录下的 `profiles/Script.js`（或对应配置）后，CVR 真实的生效与重载逻辑。
-- **验证重点**:
-  - 外部替换文件后，CVR 是否自动感知？是否需要重启应用、重新触发 profile 切换或调用特定界面/控制逻辑才能触发脚本重新执行？
-  - 遇到脚本执行异常时 CVR 的错误呈现机制与恢复边界（Rollback / AutoBackup 真实触发机制）；
-  - macOS 与 Windows 平台是否存在部署与生效差异；
-  - **硬性边界警惕**: **仍然绝对禁止主观假设“向 Mihomo 内核发送 `/configs` reload 请求”等同于“CVR 重新执行了扩展脚本”**。Mihomo 仅重载最终配置 YAML，而该 YAML 是由 CVR 执行脚本后输出的，两者的触发点完全不同。
+### 5.2 Gate B: 部署与生效门禁 (Deploy / Apply Gate) — RESOLVED
+- **门禁状态**: **RESOLVED (已验证解决)**
+- **一手实验证据指针 (Evidence)**:
+  - **macOS 原型证据**: 分支与提交锚点 `prototype/deploy-gate-macos @ 1385f5d39dd3403a22dd57da297fb1c259bc63e2`，详尽报告: [Gate B macOS 部署与生效门禁调研报告](gate-b-macos-findings.md)
+  - **Windows 原型证据**: 分支与提交锚点 `prototype/deploy-gate-windows @ 80878832c0705c57bdb171fd4f55f278a3ec816c`，详尽报告: [Gate B Windows 部署与生效门禁调研报告](gate-b-windows-findings.md)
+- **通用生命周期核心结论 (Common Lifecycle Conclusions)**:
+  1. **被动文件替换无感知 (Passive Replacement Ineffective - Host-observed)**:
+     - 在 macOS 与 Windows 上，外部静默覆写或原子替换 `profiles/Script.js` 后，CVR 均完全不会自动重新计算配置或执行脚本，生成的 `clash-verge.yaml` 保持不变。
+  2. **生效触发机制 (Headless Trigger Mechanism - Host-observed / Source-verified)**:
+     - 外部更新后，必须通过受控的生命周期事件（如受控进程优雅重启或应用层触发重载）促使 CVR 执行启动流水线（`init_runtime_config` $\to$ `generate_and_validate` $\to$ `use_script`），新脚本才会被真正执行并渲染生成新的 `clash-verge.yaml`。
+  3. **Mihomo 内核重载与 CVR 脚本执行正交 (Negative Control - Host-observed)**:
+     - 实验确证向 Mihomo RESTful External Controller API 发送 `/configs` reload 请求仅重载磁盘上现有的 YAML 配置，**绝对不会**触发 CVR 重新执行扩展脚本。
+  4. **脚本异常静默降级边界 (Degradation on Error - Host-observed / Source-verified)**:
+     - CVR 的 `use_script` 具有“Never fails”防崩溃设计。当脚本存在语法错误或执行崩溃时，CVR 记录日志并静默降级回原始未修饰的基础 profile，CVR 进程存活但派生分流降级。
+  5. **外部替换无内置自动回滚与备份 (External Replacement Unprotected - Source-verified / Host-observed)**:
+     - CVR 源码中内置的静态校验、自动备份和自动恢复（Rollback / AutoBackup）仅属于 GUI 内置的 `save_profile_file` 路径；外部直接替换文件脱离了该路径保护，损坏脚本不会被 CVR 自动还原。
+     - **生产设计要求**: 外部客户端部署器必须自行在本地建立完整的 Pre-flight 静态校验、Baseline 备份与失败自愈回滚机制。
+- **平台差异与约束 (Platform Deltas)**:
+  1. **文件替换行为与锁机制 (Host-observed)**:
+     - macOS 与 Windows 均支持直接覆写与原子替换（`os.replace` / Win32 `MoveFileExW`）。Windows 下 CVR 仅在配置流水线读取时瞬态打开文件，常驻态不持有句柄，未遭遇 `ERROR_SHARING_VIOLATION`。
+  2. **运行态进程拓扑与服务连续性 (Host-observed / Inferred)**:
+     - **macOS**: 测试机采用 Privileged Helper Tool (`clash-verge-service`) 托管内核运行于 Service 模式，GUI 与内核解耦（内核连续性未直接测量，标定为 `NOT ESTABLISHED`）；
+     - **Windows**: 测试机未安装 Service，运行于 Sidecar 模式（`verge-mihomo.exe` 为 GUI 直接子进程，`SIDECAR_PARENT_CHILD_COUPLING_OBSERVED`）；GUI 退出会带走子进程，重启时伴随 TUN 重置与短暂停机（`REPORTED / NOT DIRECTLY CAPTURED`）；Windows Service 模式零中断为 `Inferred`。
+  3. **提权边界与资格限定 (Privilege Qualification - Host-observed / Source-supported)**:
+     - Windows 现场实测证明其 CVR 进程以高完整性级别（High Mandatory Integrity Level / Elevated）运行，导致未提权脚本无法终止进程；其原因是现场安装配置了 `~ RUNASADMIN` 注册表兼容项。
+     - **硬性架构限定**: **绝对不能将该现象泛化为“所有 Windows 环境的 CVR 总是需要提权运行”**。生产架构的部署器必须动态探测宿主环境的实际进程与权限需求，兼容普通用户权限与提权运行模式。
+
+### 5.3 调研前沿收敛与后续阶段展望 (Next Frontier)
+- **门禁状态总结**: Gate A（构建门禁）与 Gate B（部署与生效门禁）已全部完成双平台严格闭环验证（`RESOLVED`）。
+- **后续阶段**: 原型验证阶段结束，架构调研进入多设备分发与部署工具链的架构规格设计（Architecture Spec & Release Authority Pipeline）。
 
 ---
 
