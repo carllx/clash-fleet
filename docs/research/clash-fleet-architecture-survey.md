@@ -31,18 +31,18 @@ Clash Fleet 的目标是为基于 Clash Verge Rev (以下简称 CVR) 与 Mihomo 
 1. **脚本运行时引擎与版本锚定**:
    - CVR 扩展脚本运行于 Rust 嵌入式 JavaScript 引擎 **Boa**。
    - CVR 当前开发主线源码中显式锁定依赖版本为 `boa_engine = "0.22.0"`。Clash Fleet 不自行预设或假定固定的 ECMAScript 年代规范（如 ES2019/ES2020 等）；具体的 JavaScript 语言特性与标准 API 兼容边界，由 Build Gate 针对实际 CVR-pinned Boa runtime 进行验证。
-   - *一手源码参考*: [CVR `src-tauri/Cargo.toml`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/Cargo.toml)
+   - *一手源码参考*: [CVR `src-tauri/Cargo.toml`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/Cargo.toml)
 2. **Callable Global `main` 入口合约**:
    - CVR 源码的脚本校验器（Validator）接受 `function main`、`const main` 或 `let main` 声明，并在底层执行层调用 `main(config, profileName)`。
    - **Verified Contract**: 最终交付的 Script 必须在全局作用域暴露可调用的 `main(config, profileName)` 函数。
-   - *一手源码参考*: [CVR `src-tauri/src/core/validate.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/core/validate.rs)、[CVR `src-tauri/src/enhance/script.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/enhance/script.rs)
+   - *一手源码参考*: [CVR `src-tauri/src/core/validate.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/core/validate.rs)、[CVR `src-tauri/src/enhance/script.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/enhance/script.rs)
 3. **I/O 边界与沙箱限制**:
    - CVR 扩展脚本运行在无外部 I/O 绑定的沙箱中，**不支持网络 I/O (`fetch`/`http`) 与文件系统 I/O (`fs`)**。
-   - *一手文档参考*: [Clash Verge Rev 官方扩展脚本文档](https://clash-verge-rev.github.io/guide/extension.html)
+   - *一手文档参考*: [Clash Verge Rev 官方扩展脚本文档](https://www.clashverge.dev/guide/script.html)
 4. **单源文本执行与无运行时多文件 Loader**:
    - CVR 当前的扩展脚本执行路径将单一脚本源码文本（script source text）传递给 Boa 引擎执行评估，并未提供应用层/项目级的多文件加载器或 CommonJS `require` 规范支持。
    - 因此，**Clash Fleet 不依赖运行时动态多文件加载**；多源码文件解耦依赖构建期打包（Build-time Bundling），由 Build Gate 进行验证。
-   - *一手源码参考*: [CVR `src-tauri/src/enhance/script.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/enhance/script.rs)
+   - *一手源码参考*: [CVR `src-tauri/src/enhance/script.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/enhance/script.rs)
 5. **App-owned Authoritative 控制面字段**:
    - 根据 CVR 源码实现，应用层存在一组明确的权威控制面字段（Authoritative / Control-Plane Fields），包括：
      - `CONTROL_PLANE_KEYS` 常量定义的字段；
@@ -51,11 +51,11 @@ Clash Fleet 的目标是为基于 Clash Verge Rev (以下简称 CVR) 与 Mihomo 
      - `hosts` 映射。
    - Script 或 Merge 对上述控制面字段的修改，会在最终配置组装流水线的末端被应用自身设置（App State / GUI Settings）覆盖。
    - **分层边界确认**: 上述 CVR 应用内部控制面字段与操作系统层面的系统代理开关（OS system proxy）属于完全不同的控制层级。
-   - *一手源码参考*: [CVR `src-tauri/src/enhance/mod.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/enhance/mod.rs)
+   - *一手源码参考*: [CVR `src-tauri/src/enhance/mod.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/enhance/mod.rs)
 6. **配置保存、恢复与自动备份行为**:
    - **失败恢复 (Rollback)**: `save_profile_file` 在脚本校验（Validation）或运行时应用（Runtime Apply）失败时，会触发恢复原始文件的逻辑，防止损坏配置落地。
    - **自动备份 (AutoBackup)**: 自动备份触发逻辑在当前 CVR 源码中是明确展示并限定应用于全局 `Merge` / `Script` 配置保存流程，而非泛化应用于所有类型的 profile/script 保存动作。
-   - *一手源码参考*: [CVR `src-tauri/src/cmd/save_profile.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/cmd/save_profile.rs)、[CVR `src/locales/en/profiles.json`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src/locales/en/profiles.json)
+   - *一手源码参考*: [CVR `src-tauri/src/cmd/save_profile.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/cmd/save_profile.rs)、[CVR `src/locales/en/profiles.json`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src/locales/en/profiles.json)
 
 ### 3.2 Mihomo 内核控制面与规则体系
 1. **Rule Provider 原生支持**:
@@ -69,10 +69,10 @@ Clash Fleet 的目标是为基于 Clash Verge Rev (以下简称 CVR) 与 Mihomo 
 高使用量开源项目展示了可供借鉴的 `source → transform/build → artifact → distribution` 模式：
 1. **Loyalsoldier/clash-rules**:
    - 使用 GitHub Actions CI 拉取上游原始数据并生成规则文件构件，发布到 GitHub Release 及发布分支。
-   - *一手源码参考*: [Loyalsoldier `/.github/workflows/run.yml`](https://github.com/Loyalsoldier/clash-rules/blob/release/.github/workflows/run.yml)
+   - *一手源码参考*: [Loyalsoldier `/.github/workflows/run.yml`](https://github.com/Loyalsoldier/clash-rules/blob/ab21f1c70d263c683990a0aed446ad3bf09a2961/.github/workflows/run.yml)
 2. **sub-store-org/Sub-Store**:
    - 使用 `build → test → bundle` 流水线构建出单体运行构件，发布至 GitHub Release 及 release 分支，并提供构件同步机制。
-   - *一手源码参考*: [Sub-Store `/.github/workflows/main.yml`](https://github.com/sub-store-org/Sub-Store/blob/master/.github/workflows/main.yml)
+   - *一手源码参考*: [Sub-Store `/.github/workflows/main.yml`](https://github.com/sub-store-org/Sub-Store/blob/e08f1b19f436b604fcafbf14a6743d635824e391/.github/workflows/main.yml)
 3. **blackmatrix7/ios_rule_script, ACL4SSR, tindy2013/subconverter, juewuy/ShellCrash**:
    - 展示了规则集切片拆分、模板化配置以及跨设备本地分发的可选设计路径。其具体做法是否采纳属于 Clash Fleet 架构假说，需经工程评审确定。
 
@@ -157,16 +157,16 @@ flowchart LR
 ## 6. 核心一手参考与文献 (Primary Sources & References)
 
 1. **Clash Verge Rev 源码与文档**:
-   - 依赖版本: [CVR `src-tauri/Cargo.toml`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/Cargo.toml)
-   - 脚本校验: [CVR `src-tauri/src/core/validate.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/core/validate.rs)
-   - 脚本执行: [CVR `src-tauri/src/enhance/script.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/enhance/script.rs)
-   - 控制面字段: [CVR `src-tauri/src/enhance/mod.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/enhance/mod.rs)
-   - 配置保存与恢复: [CVR `src-tauri/src/cmd/save_profile.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src-tauri/src/cmd/save_profile.rs)
-   - 国际化文案及备份触发定义: [CVR `src/locales/en/profiles.json`](https://github.com/clash-verge-rev/clash-verge-rev/blob/main/src/locales/en/profiles.json)
-   - 官方文档: [Clash Verge Rev Documentation](https://clash-verge-rev.github.io/guide/extension.html)
+   - 依赖版本: [CVR `src-tauri/Cargo.toml`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/Cargo.toml)
+   - 脚本校验: [CVR `src-tauri/src/core/validate.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/core/validate.rs)
+   - 脚本执行: [CVR `src-tauri/src/enhance/script.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/enhance/script.rs)
+   - 控制面字段: [CVR `src-tauri/src/enhance/mod.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/enhance/mod.rs)
+   - 配置保存与恢复: [CVR `src-tauri/src/cmd/save_profile.rs`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src-tauri/src/cmd/save_profile.rs)
+   - 国际化文案及备份触发定义: [CVR `src/locales/en/profiles.json`](https://github.com/clash-verge-rev/clash-verge-rev/blob/c4f9d65e07a9fad6d87fe1bbf8f0e90f5a3ebd84/src/locales/en/profiles.json)
+   - 官方文档: [Clash Verge Rev Documentation](https://www.clashverge.dev/guide/script.html)
 2. **Mihomo (Clash Meta) 内核**:
    - 规则集格式: [Mihomo Wiki Rule Providers](https://wiki.metacubex.one/config/rule-providers/)
    - 内核 API: [Mihomo Wiki API /configs](https://wiki.metacubex.one/api/#configs)
 3. **业界构建流水线项目**:
-   - 规则构建工作流: [Loyalsoldier `/.github/workflows/run.yml`](https://github.com/Loyalsoldier/clash-rules/blob/release/.github/workflows/run.yml)
-   - 订阅转换打包流水线: [Sub-Store `/.github/workflows/main.yml`](https://github.com/sub-store-org/Sub-Store/blob/master/.github/workflows/main.yml)
+   - 规则构建工作流: [Loyalsoldier `/.github/workflows/run.yml`](https://github.com/Loyalsoldier/clash-rules/blob/ab21f1c70d263c683990a0aed446ad3bf09a2961/.github/workflows/run.yml)
+   - 订阅转换打包流水线: [Sub-Store `/.github/workflows/main.yml`](https://github.com/sub-store-org/Sub-Store/blob/e08f1b19f436b604fcafbf14a6743d635824e391/.github/workflows/main.yml)
