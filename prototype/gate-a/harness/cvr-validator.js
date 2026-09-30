@@ -1,62 +1,73 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 /**
- * 模拟 Clash Verge Rev (src-tauri/src/core/validate.rs) 的校验器
- * 1. 静态包含 "function main" / "const main" / "let main"
- * 2. Boa 0.22.0 语法解析
- * 3. 检查 Node 运行时泄露 (CommonJS require 等)
+ * Bounded CVR Compatibility Harness — 校验器部分
+ *
+ * 注意：本 Harness 只复制 Gate A 所需的 observable contract：
+ * - CVR static main marker 字符串要求；
+ * - Boa 0.22.0 parse / eval 语法合法性；
+ * - 无 CommonJS loader / require 宿主泄漏。
+ * 它不是 CVR runtime 的完整 emulator（不包含 CVR 的 execution timeout、loop iteration limit、
+ * log limits、config lowercasing、error fallback 及 result mapping 等全量控制面逻辑）。
  */
 export function validateScript(scriptPath, boaBinPath) {
   if (!fs.existsSync(scriptPath)) {
-    return { valid: false, reason: `File not found: ${scriptPath}` };
+    return {
+      valid: false,
+      staticMarkerPassed: false,
+      boaSyntaxValid: false,
+      noNodeLoaderLeak: false,
+      reason: `File not found: ${scriptPath}`,
+    };
   }
 
   const content = fs.readFileSync(scriptPath, 'utf8');
 
-  // 1. CVR 原生静态检查
-  const hasMainString =
+  // 1. CVR 原生静态 Marker 检查 (validate.rs: content.contains("function main") || ...)
+  const staticMarkerPassed =
     content.includes('function main') ||
     content.includes('const main') ||
     content.includes('let main');
 
-  if (!hasMainString) {
-    return {
-      valid: false,
-      reason: 'Script must contain a main function (failed CVR validate.rs string check)',
-      stage: 'static_string_check',
-    };
-  }
+  // 2. 检查非法 Node 宿主残留 (沙箱中不存在 CommonJS require() 或 process)
+  const noNodeLoaderLeak = !/\brequire\s*\(/.test(content) && !/\bprocess\./.test(content);
 
-  // 2. 检查非法 Node 运行时残留 (如沙箱中不存在的 require/process)
-  if (/\brequire\s*\(/.test(content)) {
-    return {
-      valid: false,
-      reason: 'Script contains CommonJS require() calls which are unsupported in Boa sandbox',
-      stage: 'runtime_dependency_check',
-    };
-  }
-
-  // 3. Boa 0.22.0 语法与评估校验 (等价于 CVR validate.rs 中的 context.eval)
+  // 3. Boa 0.22.0 语法解析与评估校验 (评估脚本语法是否能被 Boa 0.22.0 正确解析)
   const validationSnippet = `
 var console = Object.freeze({
   log(...data){}, info(...data){}, error(...data){}, debug(...data){}
 });
 `;
+  let boaSyntaxValid = false;
+  let syntaxError = null;
+
   try {
     execFileSync(boaBinPath, ['-e', validationSnippet, scriptPath], {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    boaSyntaxValid = true;
   } catch (err) {
     const stderr = err.stderr || err.stdout || err.message;
-    return {
-      valid: false,
-      reason: `Boa syntax evaluation failed: ${stderr.trim()}`,
-      stage: 'boa_syntax_eval',
-    };
+    syntaxError = `Boa syntax evaluation failed: ${String(stderr).trim()}`;
   }
 
-  return { valid: true, reason: 'Passed CVR static string & Boa 0.22.0 syntax validation' };
+  const valid = staticMarkerPassed && noNodeLoaderLeak && boaSyntaxValid;
+  let reason = 'Passed CVR static marker, Boa 0.22.0 syntax validation, and no Node loader leak';
+  if (!staticMarkerPassed) {
+    reason = 'Script missing required static main marker (failed CVR validate.rs string check)';
+  } else if (!noNodeLoaderLeak) {
+    reason = 'Script contains CommonJS require() or process references unsupported in Boa sandbox';
+  } else if (!boaSyntaxValid) {
+    reason = syntaxError;
+  }
+
+  return {
+    valid,
+    staticMarkerPassed,
+    boaSyntaxValid,
+    noNodeLoaderLeak,
+    reason,
+  };
 }

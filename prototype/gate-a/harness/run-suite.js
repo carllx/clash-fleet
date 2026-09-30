@@ -25,172 +25,263 @@ function deepEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-async function runTestSuite() {
-  console.log('===============================================================');
-  console.log(' Clash Fleet — Prototype Gate A / Build Gate Test Suite');
-  console.log('===============================================================\n');
+/**
+ * 严格预期矩阵 (Expected Outcome Matrix for Fail-Closed Gate Enforcement)
+ */
+const EXPECTED_MATRIX = {
+  'concat': {
+    name: 'Candidate 1: Minimal Concat Generator (Stripping Adapter)',
+    verdict: 'SUPPORTED WITH SMALL ADAPTER',
+    singleScript: true,
+    staticMainMarker: true,
+    boaSyntaxValid: true,
+    globalCallableMain: true,
+    behaviorMatch: true,
+    noNodeLeakage: true,
+    deterministicBuild: true,
+  },
+  'concat-naive': {
+    name: 'Candidate 1 (Naive Negative Control): Raw Concat (unstripped imports/exports)',
+    verdict: 'NOT VIABLE',
+    singleScript: true,
+    staticMainMarker: true,
+    boaSyntaxValid: false, // 预期: Boa 普通脚本模式遇到 export 语法报错
+    globalCallableMain: false,
+    behaviorMatch: false,
+    noNodeLeakage: true,
+    deterministicBuild: true,
+  },
+  'esbuild': {
+    name: 'Candidate 2: esbuild (IIFE + Footer Adapter)',
+    verdict: 'SUPPORTED WITH SMALL ADAPTER',
+    singleScript: true,
+    staticMainMarker: true,
+    boaSyntaxValid: true,
+    globalCallableMain: true,
+    behaviorMatch: true,
+    noNodeLeakage: true,
+    deterministicBuild: true,
+  },
+  'esbuild-naive': {
+    name: 'Candidate 2 (Naive Negative Control): esbuild (Default IIFE, unbridged)',
+    verdict: 'NOT VIABLE',
+    singleScript: true,
+    staticMainMarker: true,
+    boaSyntaxValid: true,
+    globalCallableMain: false, // 预期: main 被闭包隔离在 IIFE 内，全局不可调用
+    behaviorMatch: false,
+    noNodeLeakage: true,
+    deterministicBuild: true,
+  },
+  'rollup-flat': {
+    name: 'Candidate 3A: Rollup Flat (Scope Hoisted + Post-process Export Stripping Adapter)',
+    verdict: 'SUPPORTED WITH SMALL ADAPTER',
+    singleScript: true,
+    staticMainMarker: true,
+    boaSyntaxValid: true,
+    globalCallableMain: true,
+    behaviorMatch: true,
+    noNodeLeakage: true,
+    deterministicBuild: true,
+  },
+  'rollup-iife': {
+    name: 'Candidate 3B: Rollup IIFE (IIFE + Footer Adapter)',
+    verdict: 'SUPPORTED WITH SMALL ADAPTER',
+    singleScript: true,
+    staticMainMarker: true,
+    boaSyntaxValid: true,
+    globalCallableMain: true,
+    behaviorMatch: true,
+    noNodeLeakage: true,
+    deterministicBuild: true,
+  },
+  'rollup-naive': {
+    name: 'Candidate 3 (Naive Negative Control): Rollup (Default IIFE, unbridged)',
+    verdict: 'NOT VIABLE',
+    singleScript: true,
+    staticMainMarker: true,
+    boaSyntaxValid: true,
+    globalCallableMain: false, // 预期: main 被闭包隔离在 IIFE 内，全局不可调用
+    behaviorMatch: false,
+    noNodeLeakage: true,
+    deterministicBuild: true,
+  },
+};
+
+export async function runTestSuite() {
+  console.log('========================================================================');
+  console.log(' Clash Fleet — Prototype Gate A / Build Gate Verification Test Suite');
+  console.log(' Harness Scope: Bounded CVR Compatibility Harness (Boa 0.22.0 Parity)');
+  console.log('========================================================================\n');
 
   if (!fs.existsSync(BOA_BIN)) {
     console.error(`[FATAL] Boa binary not found at ${BOA_BIN}. Run setup-boa.sh first.`);
     process.exit(1);
   }
 
-  const boaVersion = fs.readFileSync(path.resolve(ROOT_DIR, 'bin/setup-boa.sh'), 'utf8');
-  console.log(`[Env] Target Boa: ${BOA_BIN}`);
-  console.log(`[Env] Input Config: ${INPUT_FILE}`);
-  console.log(`[Env] Expected Result: ${EXPECTED_FILE}\n`);
+  console.log(`[Target Runtime]  ${BOA_BIN} (boa 0.22.0)`);
+  console.log(`[Input Config]    ${INPUT_FILE}`);
+  console.log(`[Expected Output] ${EXPECTED_FILE}\n`);
 
   const inputConfig = JSON.parse(fs.readFileSync(INPUT_FILE, 'utf8'));
   const expectedOutput = JSON.parse(fs.readFileSync(EXPECTED_FILE, 'utf8'));
 
   // 1. 首次构建
-  console.log('>>> [Step 1] Running Initial Builds...');
+  console.log('>>> [Step 1] Running Initial Candidate Builds...');
   buildConcat();
   await buildEsbuild();
   await buildRollup();
 
-  // 记录哈希用于可重复性测试
-  const candidates = [
-    {
-      id: 'concat',
-      name: 'Candidate 1: Minimal Concat Generator',
-      file: path.join(DIST_DIR, 'Script.concat.js'),
-      buildFn: () => buildConcat(),
-      complexity: 'Very Low (50 LOC pure Node script, zero deps)',
-    },
-    {
-      id: 'concat-naive',
-      name: 'Candidate 1 (Naive): Raw Concat (with imports/exports)',
-      file: path.join(DIST_DIR, 'Script.concat-naive.js'),
-      buildFn: () => buildConcat(),
-      complexity: 'Minimal (simple cat)',
-    },
-    {
-      id: 'esbuild',
-      name: 'Candidate 2: esbuild (IIFE + Adapter)',
-      file: path.join(DIST_DIR, 'Script.esbuild.js'),
-      buildFn: async () => await buildEsbuild(),
-      complexity: 'Low (15 LOC esbuild config with footer adapter)',
-    },
-    {
-      id: 'esbuild-naive',
-      name: 'Candidate 2 (Naive): esbuild (Default IIFE, no adapter)',
-      file: path.join(DIST_DIR, 'Script.esbuild-naive.js'),
-      buildFn: async () => await buildEsbuild(),
-      complexity: 'Minimal (esbuild default)',
-    },
-    {
-      id: 'rollup-flat',
-      name: 'Candidate 3A: Rollup Flat (Scope Hoisted, Stripped Export)',
-      file: path.join(DIST_DIR, 'Script.rollup-flat.js'),
-      buildFn: async () => await buildRollup(),
-      complexity: 'Low (18 LOC Rollup config, natural top-level export)',
-    },
-    {
-      id: 'rollup-iife',
-      name: 'Candidate 3B: Rollup IIFE (IIFE + Adapter)',
-      file: path.join(DIST_DIR, 'Script.rollup-iife.js'),
-      buildFn: async () => await buildRollup(),
-      complexity: 'Low (20 LOC Rollup config with footer adapter)',
-    },
-    {
-      id: 'rollup-naive',
-      name: 'Candidate 3 (Naive): Rollup (Default IIFE, no adapter)',
-      file: path.join(DIST_DIR, 'Script.rollup-naive.js'),
-      buildFn: async () => await buildRollup(),
-      complexity: 'Minimal (Rollup default)',
-    },
+  const candidateDefs = [
+    { id: 'concat', file: path.join(DIST_DIR, 'Script.concat.js'), complexity: 'Pure Node.js topological read + regex strip adapter' },
+    { id: 'concat-naive', file: path.join(DIST_DIR, 'Script.concat-naive.js'), complexity: 'Simple text concatenation (negative control)' },
+    { id: 'esbuild', file: path.join(DIST_DIR, 'Script.esbuild.js'), complexity: 'esbuild IIFE + global footer adapter bridge' },
+    { id: 'esbuild-naive', file: path.join(DIST_DIR, 'Script.esbuild-naive.js'), complexity: 'esbuild default IIFE unbridged (negative control)' },
+    { id: 'rollup-flat', file: path.join(DIST_DIR, 'Script.rollup-flat.js'), complexity: 'Rollup format es + regex post-process export strip adapter' },
+    { id: 'rollup-iife', file: path.join(DIST_DIR, 'Script.rollup-iife.js'), complexity: 'Rollup IIFE + global footer adapter bridge' },
+    { id: 'rollup-naive', file: path.join(DIST_DIR, 'Script.rollup-naive.js'), complexity: 'Rollup default IIFE unbridged (negative control)' },
   ];
 
-  // 2. 验证可重复性 (Repeatability Check)
-  console.log('\n>>> [Step 2] Verifying Build Repeatability (Deterministic Check)...');
+  // 记录哈希用于确定性重复构建检查
   const initialHashes = {};
-  for (const c of candidates) {
+  for (const c of candidateDefs) {
     initialHashes[c.id] = getFileHash(c.file);
   }
 
-  // 二次构建
+  // 2. 二次构建验证构建可重复性
+  console.log('\n>>> [Step 2] Executing Repeat Build for Determinism Assertion...');
   buildConcat();
   await buildEsbuild();
   await buildRollup();
 
-  const results = [];
+  const observedResults = [];
+  const gateAssertionFailures = [];
 
-  for (const c of candidates) {
+  // 3. 运行逐项验证并断言
+  console.log('\n>>> [Step 3] Evaluating Candidates against Bounded CVR Observable Contract...');
+
+  for (const c of candidateDefs) {
+    const expected = EXPECTED_MATRIX[c.id];
     const secondHash = getFileHash(c.file);
-    const repeatable = initialHashes[c.id] === secondHash;
+    const deterministicBuild = initialHashes[c.id] === secondHash;
     const sizeBytes = fs.statSync(c.file).size;
 
-    // 静态校验 (CVR validate.rs 模拟)
+    // 静态与语法校验
     const valRes = validateScript(c.file, BOA_BIN);
+    const singleScript = fs.existsSync(c.file);
+    const staticMainMarker = valRes.staticMarkerPassed;
+    const boaSyntaxValid = valRes.boaSyntaxValid;
+    const noNodeLeakage = valRes.noNodeLoaderLeak;
 
-    // 运行时执行 (Boa 0.22.0)
+    // 沙箱运行时可调用与行为输出执行
     const execRes = executeScriptWithBoa(c.file, inputConfig, 'CreamData', BOA_BIN);
+    const globalCallableMain = execRes.globalCallableMainPassed;
+    const behaviorMatch = execRes.success && execRes.output ? deepEqual(execRes.output, expectedOutput) : false;
 
-    let behaviorMatch = false;
-    if (execRes.success && execRes.output) {
-      behaviorMatch = deepEqual(execRes.output, expectedOutput);
+    // 综合判定
+    let verdict = 'NOT VIABLE';
+    if (singleScript && staticMainMarker && boaSyntaxValid && globalCallableMain && behaviorMatch && noNodeLeakage && deterministicBuild) {
+      verdict = 'SUPPORTED WITH SMALL ADAPTER';
     }
 
-    // 检查是否有 CommonJS loader / require 隐式依赖
-    const content = fs.readFileSync(c.file, 'utf8');
-    const hasNodeDeps = /\brequire\s*\(/.test(content) || /\bprocess\./.test(content);
+    const observed = {
+      id: c.id,
+      name: expected.name,
+      verdict,
+      singleScript,
+      staticMainMarker,
+      boaSyntaxValid,
+      globalCallableMain,
+      behaviorMatch,
+      noNodeLeakage,
+      deterministicBuild,
+      sizeBytes,
+      complexity: c.complexity,
+      errorDetail: !valRes.valid ? valRes.reason : execRes.error,
+    };
+    observedResults.push(observed);
 
-    // 判断整体判定
-    let verdict = 'NOT VIABLE';
-    if (valRes.valid && execRes.success && behaviorMatch) {
-      if (c.id === 'concat' || c.id === 'rollup-flat') {
-        verdict = 'SUPPORTED';
-      } else {
-        verdict = 'SUPPORTED WITH SMALL ADAPTER';
+    // Fail-Closed Gate Assertions
+    const assertionErrors = [];
+    if (observed.verdict !== expected.verdict) {
+      assertionErrors.push(`Verdict mismatch: expected ${expected.verdict}, got ${observed.verdict}`);
+    }
+    if (observed.singleScript !== expected.singleScript) {
+      assertionErrors.push(`singleScript mismatch: expected ${expected.singleScript}, got ${observed.singleScript}`);
+    }
+    if (observed.staticMainMarker !== expected.staticMainMarker) {
+      assertionErrors.push(`staticMainMarker mismatch: expected ${expected.staticMainMarker}, got ${observed.staticMainMarker}`);
+    }
+    if (observed.boaSyntaxValid !== expected.boaSyntaxValid) {
+      assertionErrors.push(`boaSyntaxValid mismatch: expected ${expected.boaSyntaxValid}, got ${observed.boaSyntaxValid}`);
+    }
+    if (observed.globalCallableMain !== expected.globalCallableMain) {
+      assertionErrors.push(`globalCallableMain mismatch: expected ${expected.globalCallableMain}, got ${observed.globalCallableMain}`);
+    }
+    if (observed.behaviorMatch !== expected.behaviorMatch) {
+      assertionErrors.push(`behaviorMatch mismatch: expected ${expected.behaviorMatch}, got ${observed.behaviorMatch}`);
+    }
+    if (observed.noNodeLeakage !== expected.noNodeLeakage) {
+      assertionErrors.push(`noNodeLeakage mismatch: expected ${expected.noNodeLeakage}, got ${observed.noNodeLeakage}`);
+    }
+    if (observed.deterministicBuild !== expected.deterministicBuild) {
+      assertionErrors.push(`deterministicBuild mismatch: expected ${expected.deterministicBuild}, got ${observed.deterministicBuild}`);
+    }
+
+    if (assertionErrors.length > 0) {
+      gateAssertionFailures.push({
+        id: c.id,
+        name: expected.name,
+        errors: assertionErrors,
+      });
+    }
+  }
+
+  // 4. 打印格式化矩阵报告
+  console.log('\n========================================================================');
+  console.log(' GATE A OBSERVABLE CONTRACT MATRIX');
+  console.log('========================================================================\n');
+
+  for (const r of observedResults) {
+    console.log(`------------------------------------------------------------------------`);
+    console.log(`[${r.verdict}] ${r.name}`);
+    console.log(`  - Artifact Size:              ${r.sizeBytes} bytes`);
+    console.log(`  - Single Script.js:           ${r.singleScript ? 'PASS' : 'FAIL'}`);
+    console.log(`  - CVR Static Main Marker:     ${r.staticMainMarker ? 'PASS' : 'FAIL'}`);
+    console.log(`  - Boa 0.22.0 Syntax/Parse:    ${r.boaSyntaxValid ? 'PASS' : 'FAIL'}`);
+    console.log(`  - Callable Global Main:       ${r.globalCallableMain ? 'PASS' : 'FAIL'}`);
+    console.log(`  - Fixture Output Match:       ${r.behaviorMatch ? 'PASS (Deep Equal)' : 'FAIL'}`);
+    console.log(`  - Zero Node Loader Leak:      ${r.noNodeLeakage ? 'PASS' : 'FAIL'}`);
+    console.log(`  - Deterministic Repeat Build: ${r.deterministicBuild ? 'PASS (Bit-identical)' : 'FAIL'}`);
+    console.log(`  - Build & Adapter Shape:      ${r.complexity}`);
+    if (r.errorDetail) {
+      console.log(`  - Observable Rejection:       ${r.errorDetail}`);
+    }
+  }
+  console.log('------------------------------------------------------------------------\n');
+
+  // 5. Fail-Closed Gate Enforcement 检查
+  if (gateAssertionFailures.length > 0) {
+    console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    console.error(' [FAIL-CLOSED GATE FAILED] The following candidates violated gate assertions:');
+    for (const f of gateAssertionFailures) {
+      console.error(`  * ${f.name} (${f.id}):`);
+      for (const err of f.errors) {
+        console.error(`      - ${err}`);
       }
     }
-
-    results.push({
-      id: c.id,
-      name: c.name,
-      verdict,
-      singleScript: true,
-      hasMainContract: valRes.valid,
-      boaParsable: !valRes.reason || !valRes.reason.includes('syntax'),
-      boaExecSuccess: execRes.success,
-      behaviorMatch,
-      noNodeDeps: !hasNodeDeps,
-      complexity: c.complexity,
-      repeatable,
-      sizeBytes,
-      errorDetail: !valRes.valid ? valRes.reason : execRes.error,
-    });
+    console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n');
+    process.exit(1);
   }
 
-  // 3. 输出汇总报告
-  console.log('\n===============================================================');
-  console.log(' GATE A CANDIDATE COMPARISON MATRIX');
-  console.log('===============================================================\n');
-
-  for (const r of results) {
-    console.log(`---------------------------------------------------------------`);
-    console.log(`[${r.verdict}] ${r.name}`);
-    console.log(`  - Artifact Size:        ${r.sizeBytes} bytes`);
-    console.log(`  - Single Script.js:     ${r.singleScript ? 'PASS' : 'FAIL'}`);
-    console.log(`  - Global main Contract: ${r.hasMainContract ? 'PASS' : 'FAIL'}`);
-    console.log(`  - Boa Parse & Exec:     ${r.boaExecSuccess ? 'PASS' : 'FAIL'}`);
-    console.log(`  - Fixture Output Match: ${r.behaviorMatch ? 'PASS (Deep Equal)' : 'FAIL'}`);
-    console.log(`  - Zero Node Loader:     ${r.noNodeDeps ? 'PASS' : 'FAIL'}`);
-    console.log(`  - Build Repeatable:     ${r.repeatable ? 'PASS (Bit-identical)' : 'FAIL'}`);
-    console.log(`  - Build Complexity:     ${r.complexity}`);
-    if (r.errorDetail) {
-      console.log(`  - Failure Detail:       ${r.errorDetail}`);
-    }
-  }
-
-  console.log('---------------------------------------------------------------\n');
-  return results;
+  console.log('>>> [FAIL-CLOSED GATE ASSERTIONS: ALL PASSED]');
+  console.log('All adapted candidates met observable contracts and all negative controls failed as expected.\n');
+  return observedResults;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runTestSuite().catch((err) => {
-    console.error(err);
+    console.error('[FATAL]', err);
     process.exit(1);
   });
 }

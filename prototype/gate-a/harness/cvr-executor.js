@@ -4,23 +4,36 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 /**
- * 模拟 Clash Verge Rev (src-tauri/src/enhance/script.rs) 执行单脚本
+ * Bounded CVR Compatibility Harness — 执行器部分
+ *
+ * 明确约束边界：
+ * 本 Harness 是一套 bounded CVR compatibility harness，仅模拟 Gate A 所需的 observable contract：
+ * - Boa 0.22.0 沙箱下的单脚本加载；
+ * - 验证在全局作用域存在 callable main(config, profileName)；
+ * - 验证 fixture 输入输出行为匹配。
+ * 它不是 CVR runtime 的完整 emulator（未包含 loop iteration limit、timeout enforcement、
+ * 控制面字段覆盖、大小熔断等全量宿主行为）。
+ *
  * @param {string} scriptPath 目标单一脚本绝对路径
  * @param {object} inputConfig 输入配置
  * @param {string} profileName 配置名称
  * @param {string} boaBinPath Boa 可执行文件路径
- * @returns {{ success: boolean, output?: object, error?: string, rawLogs?: string }}
+ * @returns {{ success: boolean, globalCallableMainPassed: boolean, output?: object, error?: string, rawLogs?: string }}
  */
 export function executeScriptWithBoa(scriptPath, inputConfig, profileName, boaBinPath) {
   if (!fs.existsSync(scriptPath)) {
-    return { success: false, error: `Script file not found: ${scriptPath}` };
+    return {
+      success: false,
+      globalCallableMainPassed: false,
+      error: `Script file not found: ${scriptPath}`,
+    };
   }
 
   const scriptContent = fs.readFileSync(scriptPath, 'utf8');
   const configJson = JSON.stringify(inputConfig);
   const safeProfileName = profileName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-  // 构建与 CVR script.rs eval_script 完全一致的沙箱代码
+  // 构建模拟 CVR 调用全局 main 的沙箱环境代码
   const runnerCode = `
 // 1. CVR Mock Console
 var __verge_logs__ = [];
@@ -38,7 +51,7 @@ globalThis.__verge_config__ = ${JSON.stringify(configJson)};
 // 3. 用户扩展脚本源码
 ${scriptContent}
 
-// 4. CVR 执行调用与捕获 (与 CVR script.rs 保持严格一致)
+// 4. 调用全局 main 入口
 try {
   if (typeof main !== 'function') {
     throw new TypeError("Callable global 'main' is not defined (type is " + typeof main + ")");
@@ -70,20 +83,32 @@ try {
 
     if (trimmed.includes('__ERROR_FLAG__')) {
       const errorMsg = trimmed.split('__ERROR_FLAG__')[1].trim();
-      return { success: false, error: errorMsg, rawLogs: rawOutput };
+      const isMissingCallableMain = errorMsg.includes("Callable global 'main' is not defined");
+      return {
+        success: false,
+        globalCallableMainPassed: !isMissingCallableMain && false,
+        error: errorMsg,
+        rawLogs: rawOutput,
+      };
     }
 
-    // Boa CLI 对最后的表达式求值返回 JSON 字符串外壳，解析外壳与内层对象
+    // Boa CLI 返回 JSON 字符串外壳，解析出内层对象
     let parsedJsonString = trimmed;
     if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
       parsedJsonString = JSON.parse(trimmed);
     }
     const parsedObj = JSON.parse(parsedJsonString);
-    return { success: true, output: parsedObj, rawLogs: rawOutput };
+    return {
+      success: true,
+      globalCallableMainPassed: true,
+      output: parsedObj,
+      rawLogs: rawOutput,
+    };
   } catch (err) {
     const stderr = err.stderr || err.stdout || err.message;
     return {
       success: false,
+      globalCallableMainPassed: false,
       error: `Boa execution crashed: ${String(stderr).trim()}`,
       rawLogs: String(stderr),
     };
