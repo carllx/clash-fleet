@@ -29,7 +29,7 @@
 6. **tindy2013/subconverter**：经典 C++ 订阅转译引擎与 INI 模板渲染器 `[Verified]`。
 7. **juewuy/ShellCrash**：嵌入式/Linux 平台的底层网络管理与核心配置解耦实践 `[Verified]`。
 8. **ACL4SSR/ACL4SSR**：历史最悠久、采用最广的通用大单体分流预设 `[Verified]`。
-9. **MetaCubeX/meta-rules-dat**：Mihomo 原生二进制 GeoData 与 `.mrs` 高性能规则集标准 `[Verified]`。
+9. **MetaCubeX/meta-rules-dat**：Mihomo 原生二进制 GeoData 与 `.mrs` 规则集构件生态（Mihomo 支持 `format: mrs`）`[Verified]`。
 10. **DustinWin/ruleset_geodata**：现代极简白盒分流与精确 DNS 协同的最佳实践 `[Verified]`。
 
 ---
@@ -172,7 +172,7 @@
 
 ## 8. 推进至下一阶段的关键架构问题 (Architecture Questions to Carry Forward)
 
-1. **构建工具链选型**: 是否使用现代轻量 Bundler（如 esbuild / rollup）输出符合 Boa 0.22 规范的单文件 ES5/ES2019 代码？
+1. **构建工具链选型**: 是否使用现代轻量 Bundler（如 esbuild / rollup）输出符合 Boa 0.22 已验证 syntax/API compatibility boundary 的单一 Script.js？
 2. **本地回滚与状态原子性**: 当部署脚本向 `profiles/Script.js` 写入新构件时，如何与 CVR 的当前运行态安全同步且零闪断？
 3. **敏感凭证安全分层**: 订阅链接与自定义节点凭据如何与公共代码仓库物理隔离？
 

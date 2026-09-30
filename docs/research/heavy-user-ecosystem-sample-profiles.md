@@ -95,10 +95,10 @@
 ### 2.9 MetaCubeX/meta-rules-dat
 - **定位**: 专为 Mihomo (原 Clash.Meta) 打造的现代二进制 GeoData 与 Rule-Set 官方生态。
 - **一手指针**:
-  - 核心二进制产物: `geoip.dat`, `geosite.dat`, `country.mmdb`, 及专有 `.mrs` (Mihomo Rule-Set) 构件 [Verified]
-  - Mihomo 官方配置指令: `format: mrs`，支持 `behavior: domain` 与 `behavior: ipcidr` [Verified]
+  - 核心二进制产物: `geoip.dat`, `geosite.dat`, `country.mmdb`, 及专有 `.mrs` (Mihomo Rule-Set) 构件存在 [Verified]
+  - Mihomo 官方配置指令: 支持 `format: mrs`，对应 `behavior: domain` 与 `behavior: ipcidr` [Verified]
 - **核心模式**:
-  - **二进制格式优化**: `.mrs` 二进制格式相较纯文本规则集显著压缩体积，提供更紧凑的高效存储与内核解析路径，降低长文本解析负担 [Verified]。
+  - **Mihomo 原生二进制规则集支持**: `.mrs` 构件作为专有二进制 rule-set 格式由生态项目分发，Mihomo 原生支持声明 `format: mrs` 挂载使用 [Verified]；其相对于纯文本规则集的体积压缩比与加载性能优势属于基于二进制结构的推论 [Inferred / Synthesized]。
 
 ### 2.10 DustinWin/ruleset_geodata (现代极简白盒配置模式)
 - **定位**: 现代 Mihomo / Sing-box 极简白盒分流与 DNS 分流实践标杆。
