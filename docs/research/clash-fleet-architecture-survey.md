@@ -134,23 +134,28 @@ flowchart LR
 
 ---
 
-## 5. 未决原型验证门禁 (Unresolved Prototype Gates)
+## 5. 原型验证门禁状态与活跃前沿 (Prototype Gates & Active Frontier)
 
-在进入具体产品实现或冻结打包方案前，必须在独立的原型工作流中完成以下两个 Gate 的验证：
+### 5.1 Gate A: 构建门禁 (Build Gate) — RESOLVED
+- **门禁状态**: **RESOLVED (已验证解决)**
+- **一手实验证据指针 (Evidence)**:
+  - 分支与提交锚点: `prototype/build-gate @ 0c33c4cf33469cd486ded98a2b8576b5ff830b03`
+  - 详尽实验报告: [Gate A 构建门禁调研与实验验证报告](gate-a-build-findings.md)
+- **验证结论 (Result)**:
+  - **构建可行性已证实**: 多个模块化 JavaScript 源文件能够可靠生成符合 CVR 运行时合约且暴露 callable global `main(config, profileName)` 入口的单一 `Script.js`；
+  - **实际测试运行时**: `boa_engine = 0.22.0`（通过官方发布二进制建立自动化测试验证，确保与 CVR 当前主线依赖一致）；
+  - **当前推荐候选**: `Rollup Flat / Scope Hoisting + small deterministic export-stripping post-process adapter`；
+  - **决策分类判定**: `SUPPORTED WITH SMALL ADAPTER`（借助 Rollup AST 级 Scope Hoisting 展开为顶级作用域，经微小的确定性末尾 `export` 剥离适配器原生暴露顶层 `function main`，无 CommonJS 兼容垫片，产物尺寸最小且执行语义摩擦最小）；
+  - **架构决策边界**: 该结论是 Build Gate 验证后的推荐候选，**不等于最终生产架构冻结**。
 
-### Gate A: 构建门禁 (Build Gate)
-- **目标**: 验证拆分为多个源码模块的 JavaScript 代码库如何可靠生成符合 **CVR 锁定的 Boa 运行时 (`boa_engine = 0.22.0`) 语法与标准库边界**、且暴露 callable global `main(config, profileName)` 入口的单体 `Script.js`。
+### 5.2 活跃前沿: Gate B: 部署与生效门禁 (Deploy / Apply Gate) — ACTIVE UNRESOLVED
+- **门禁状态**: **ACTIVE UNRESOLVED (下一待解决原型门禁)**
+- **核心目标**: 验证外部适配器在替换 CVR 运行目录下的 `profiles/Script.js`（或对应配置）后，CVR 真实的生效与重载逻辑。
 - **验证重点**:
-  - 产物在语法和行为上必须能够通过 CVR 源码级校验器（`validate.rs`）并被实际 Boa 运行时正确执行；
-  - 探索不同构建手段（极简串联拼装、esbuild、Rollup 等）的可行性；
-  - **原则**: 在获得实际测试数据前，**严禁提前冻结任何特定 bundler 工具链**。
-
-### Gate B: 部署与生效门禁 (Deploy Gate)
-- **目标**: 验证外部适配器在替换 CVR 运行目录下的 `profiles/Script.js`（或对应配置）后，CVR 真实的生效与重载逻辑。
-- **验证重点**:
-  - 外部替换文件后，CVR 是否自动感知？是否需要重启应用、重新触发 profile 切换或调用特定界面逻辑才能触发脚本重新执行？
-  - 遇到脚本执行异常时 CVR 的错误呈现机制与恢复边界；
-  - **核心警惕**: **绝对不能主观假设“向 Mihomo 内核发送 `/configs` reload 请求”等同于“CVR 重新执行了扩展脚本”**。Mihomo 仅重载最终配置 YAML，而该 YAML 是由 CVR 执行脚本后输出的，两者的触发点完全不同。
+  - 外部替换文件后，CVR 是否自动感知？是否需要重启应用、重新触发 profile 切换或调用特定界面/控制逻辑才能触发脚本重新执行？
+  - 遇到脚本执行异常时 CVR 的错误呈现机制与恢复边界（Rollback / AutoBackup 真实触发机制）；
+  - macOS 与 Windows 平台是否存在部署与生效差异；
+  - **硬性边界警惕**: **仍然绝对禁止主观假设“向 Mihomo 内核发送 `/configs` reload 请求”等同于“CVR 重新执行了扩展脚本”**。Mihomo 仅重载最终配置 YAML，而该 YAML 是由 CVR 执行脚本后输出的，两者的触发点完全不同。
 
 ---
 
