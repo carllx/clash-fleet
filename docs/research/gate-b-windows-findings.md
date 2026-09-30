@@ -21,8 +21,8 @@
 | **Windows 文件替换行为** | **`DIRECT_WRITE_OK`**<br>(同时支持 `ATOMIC_REPLACE_OK`) | Host-observed | CVR 运行时直接文件覆盖与 `os.replace` 原子替换均成功，**未遭遇 `ERROR_SHARING_VIOLATION` 或文件锁拦截**；CVR 常驻态不持有文件句柄 |
 | **ACL 权限纪律** | **`REPORTED / NOT CAPTURED BY REPRODUCIBLE PROBE`** | Reported (Host PowerShell) | 现场 PowerShell `Get-Acl` 实测显示 `FullControl` SDDL 保持一致；但 probe 脚本内未做 Win32 自动化断言，按纪律降级标定 |
 | **被动文件替换生命周期** | **`NO_AUTO_APPLY_OBSERVED`** | Host-observed | 外部静默更新 `profiles/Script.js` 后，5s 内 `clash-verge.yaml` 的 mtime 与 SHA 完全未动，未感知脚本更新，与 macOS 一致 |
-| **确证的无头生效触发** | **`CONFIRMED_HEADLESS_TRIGGER = Elevated Process Restart`** | Host-observed / Source-verified | 因 `HKLM\...\AppCompatFlags\Layers` 配置了 `~ RUNASADMIN`，CVR GUI 运行于 High Integrity；普通进程无法 `taskkill`，外部拉起需管理员提权或提权计划任务 |
-| **服务连续性差异 (Service Continuity Delta)** | **`SIDECAR_CORE_RESTART_OBSERVED`** | Host-observed (Sidecar) / Inferred (Service) | 本机未安装 CVR Service，运行于 **Sidecar 模式**（`verge-mihomo.exe` 为 GUI 进程直接子进程）；GUI 重启实测必然导致内核重启与 TUN 重建；Service Mode 零中断仅作为未来候选假说；macOS 虽确证 Service 拓扑，但 GUI 重启时内核连续性与零中断未直接测量 (NOT ESTABLISHED) |
+| **生效触发机制与权限边界** | **`FEASIBLE_HEADLESS_TRIGGER = Elevated Process Restart`** | Source-supported / Inferred<br>(Privilege boundary: Host-observed) | 提权边界为 **Host-observed**（`~ RUNASADMIN` 导致普通权限 `Stop-Process`/`taskkill` 遭遇 `Access is denied`）；提权重启为 **Source-supported / Inferred**（完整提权重启链条为 `REPORTED / NOT DIRECTLY CAPTURED`） |
+| **服务连续性差异 (Service Continuity Delta)** | **`SIDECAR_PARENT_CHILD_COUPLING_OBSERVED`** | Host-observed (Coupling)<br>Inferred (Service)<br>REPORTED (Outage) | 本机未安装 CVR Service，运行于 **Sidecar 模式**（`verge-mihomo.exe` 为 GUI 进程直接子进程 [Host-observed]）；进程模型上 GUI 退出带走子进程，但现场未执行提权重启，重启引发的 TUN 重置与 ~1.5–2.0s 抖动归类为 `REPORTED / NOT DIRECTLY CAPTURED`；Service Mode 零中断为 `Inferred`；macOS 连续性与零中断未直接测量 (`NOT ESTABLISHED`) |
 | **非法脚本运行态测试** | **`NOT REQUIRED`** | Policy Rule | 安装版本与源码同源无分歧，共享 Boa `use_script` 降级逻辑已在 macOS 确证且源码支持，安全免除破坏性 live probe |
 | **基线还原与网络验证** | **`PASS`** | Host-observed | byte-for-byte 还原原始 `Script.js`，SHA-256 强校验完全一致；live proxy 流量持续正常 (HTTP 204) |
 
@@ -131,7 +131,7 @@ Windows 表现与 macOS 100% 一致：**CVR 未对 `profiles/Script.js` 建立�
 
 ---
 
-## 6. Windows 确证生效触发与权限边界 (Confirmed Headless Apply Trigger)
+## 6. Windows 生效触发机制与权限边界分析 (Feasible Headless Apply Trigger & Privilege Boundary)
 
 这是本次验证揭示的 **最重大 Windows 平台差异 (Primary Platform Delta)**。
 
@@ -146,13 +146,16 @@ Windows 表现与 macOS 100% 一致：**CVR 未对 `profiles/Script.js` 建立�
    `C:\Program Files\Clash Verge\clash-verge.exe : ~ RUNASADMIN`
 2. **高完整性级别运行**:
    CVR GUI 进程（PID 17868）以 **High Mandatory Integrity Level (Administrator / Elevated Token)** 运行；
-3. **UIPI 与进程保护隔离**:
+3. **UIPI 与进程保护隔离 (Host-observed)**:
    - 普通非提权进程（Medium Integrity，如标准用户 PowerShell 或无提权的后台 Agent）试图终止 CVR 进程时，被 Windows 内核强制拦截：
      `Stop-Process: Cannot stop process "clash-verge (17868)": Access is denied.`
-     `taskkill /pid 17868: Access is denied.`
+     `taskkill /F /PID 17868: Access is denied.`
+   - 普通非提权进程试图通过 `schtasks /create ... /rl highest` 创建提权计划任务时，同样被拦截：
+     `ERROR: Access is denied.`
    - 普通非提权进程试图通过 `CreateProcess` 启动带有 `~ RUNASADMIN` 的二进制时，直接抛出：
      `[WinError 50] The request is not supported / ERROR_NOT_SUPPORTED`；
    - 普通非提权进程通过 `EnumWindows` 枚举窗口时，受 UIPI 保护无法向高完整性窗口投递 `WM_CLOSE`。
+   - **证据归类**: 提权隔离边界（Privilege boundary requiring elevation）已作为 **`Host-observed`** 确证。
 
 ### 6.2 单例机制与候选通道分析 (Singleton IPC & Candidate Channels)
 探查 CVR 内置机制：
@@ -167,13 +170,17 @@ Windows 表现与 macOS 100% 一致：**CVR 未对 `profiles/Script.js` 建立�
    - 系统存在计划任务 `\Clash Verge`（触发 `C:\Program Files\Clash Verge\clash-verge.exe`）；
    - 普通权限执行 `schtasks /run /tn "Clash Verge"` 虽可成功唤起，但由于 CVR 单例锁机制，新实例仅向旧实例发送 `/commands/visible` 后静默退出，无法强行重载配置。
 
-### 6.3 确证的无头生效触发动作规范 (Confirmed Headless Apply Trigger)
-$$\mathbf{CONFIRMED\_HEADLESS\_TRIGGER} = \mathbf{Elevated\ Process\ Restart\ (taskkill\ /F\ \to\ Launch\ with\ Elevation)}$$
+### 6.3 生效触发动作规范与证据分级 (Feasible Headless Apply Trigger)
+$$\mathbf{FEASIBLE\_HEADLESS\_TRIGGER} = \mathbf{Elevated\ Process\ Restart\ (Source\text{-}supported\ /\ Inferred)}$$
 
-- **命令机制**:
+- **证据分级说明 (Evidence Classification)**:
+  1. **Privilege boundary requiring elevation**: **`Host-observed`**（实测非提权进程执行 `Stop-Process`、`taskkill /F`、`schtasks /rl highest` 均遭遇 `Access is denied`，严格证明非提权进程无法干预 CVR）；
+  2. **Elevated restart as feasible Windows apply mechanism**: **`Source-supported / Inferred`**（基于 CVR 启动源码自动加载 Script 并编译 yaml 的机制，以及单例文件锁释放的工程逻辑）；
+  3. **Successful elevated restart execution chain**: **`REPORTED / NOT DIRECTLY CAPTURED`**（本轮受控探针未在提权上下文中真正杀掉并重拉 CVR，未在现场记录 old PID $\to$ new PID $\to$ witness 的直接链条，按证据纪律降级标定）。
+- **命令机制设计**:
   当外部部署器具备管理员权限（Elevated Context / Scheduled Task with Highest Privileges / Service Context）时，执行：
   ```powershell
-  # 1. 终止 CVR GUI 进程 (由于是管理员身份，不受 Access Denied 限制)
+  # 1. 终止 CVR GUI 进程 (在提权身份下执行)
   Stop-Process -Name clash-verge -Force
   
   # 2. 以管理员权限重新拉起 CVR
@@ -194,11 +201,11 @@ $$\mathbf{CONFIRMED\_HEADLESS\_TRIGGER} = \mathbf{Elevated\ Process\ Restart\ (t
 | 拓扑属性 | macOS 现状 (`prototype/deploy-gate-macos`) | Windows (当前主机现场) | Windows (理论 Service Mode) |
 |---|---|---|---|
 | **核心管理模式** | **Service 模式** (`clash-verge-service`) [Host-observed] | **Sidecar 模式** [Host-observed] | Windows Service 模式 [Inferred] |
-| **内核进程父级** | `launchd` / Privileged Helper Tool 托管 | `clash-verge.exe` 直接衍生 (`ParentProcessId = 17868`) | `clash-verge-service` (SYSTEM 托管) |
-| **控制通道** | 本地 Unix Domain Socket (`/var/run/.../verge-mihomo.sock`) | Windows 命名管道 (`\\.\pipe\verge-mihomo-sidecar-...`) | IPC / 本地管道 |
-| **GUI 重启对核心影响** | **未直接测量 PID 连续性** (源码推论解耦，未测定) | **核心随之重启** (GUI 进程退出带走子进程) [Host-observed] | **预期核心保持存活** (待未来实测验证) [Inferred] |
-| **TUN 适配器状态** | 未专门观测 TUN 瞬时状态 (NOT DIRECTLY MEASURED) | 瞬时重建 ("Meta Tunnel" 重启) [Host-observed] | 预期由系统服务持有不中断 [Inferred] |
-| **网络中断感知 (Outage)** | **零中断结论未确立 (NOT ESTABLISHED)** | **实测短暂抖动 (~1.5s ~ 2.0s)** [Host-observed] | **假说: 零流量中断** (Inferred) |
+| **内核进程父级** | `launchd` / Privileged Helper Tool 托管 | `clash-verge.exe` 直接衍生 (`ParentProcessId = 17868`) [Host-observed] | `clash-verge-service` (SYSTEM 托管) |
+| **控制通道** | 本地 Unix Domain Socket (`/var/run/.../verge-mihomo.sock`) | Windows 命名管道 (`\\.\pipe\verge-mihomo-sidecar-...`) [Host-observed] | IPC / 本地管道 |
+| **GUI 重启对核心影响** | **未直接测量 PID 连续性** (源码推论解耦，未测定) | **父子强耦合** (子进程模型绑定) [Host-observed]<br>实测重启影响: [REPORTED / NOT DIRECTLY CAPTURED] | **预期核心保持存活** (待未来实测验证) [Inferred] |
+| **TUN 适配器状态** | 未专门观测 TUN 瞬时状态 (NOT DIRECTLY MEASURED) | 瞬时重建 ("Meta Tunnel" 重建) [REPORTED / NOT DIRECTLY CAPTURED] | 预期由系统服务持有不中断 [Inferred] |
+| **网络中断感知 (Outage)** | **零中断结论未确立 (NOT ESTABLISHED)** | **抖动感知 (~1.5s ~ 2.0s)** [REPORTED / NOT DIRECTLY CAPTURED] | **假说: 零流量中断** (Inferred) |
 
 ### 7.2 现场证据剖析与结论分级
 1. **macOS Gate B 参照结论精准分级**:
@@ -206,11 +213,11 @@ $$\mathbf{CONFIRMED\_HEADLESS\_TRIGGER} = \mathbf{Elevated\ Process\ Restart\ (t
    - **GUI/core continuity during GUI-only restart**: **`NOT DIRECTLY MEASURED in accepted macOS Gate B`** (macOS 实验重点在于优雅重启触发 Boa 脚本执行，未专门采样 GUI 重启前后 Mihomo 内核的 PID 连续性)；
    - **预期解耦与连续性收益 (Reduced coupling / continuity benefit)**: **`Source-supported / Inferred`** (源自 CVR 源码中服务托管进程模型的架构分析)；
    - **零中断声明 (Zero-outage claim)**: **`NOT ESTABLISHED`** (在已验收 macOS Gate B 中未作为测量事实确立)。
-2. **Windows Sidecar 现场实测事实 (Host-observed)**:
-   - 当前 Windows 主机运行于 **Sidecar 模式**，`clash-verge-service` 未安装；
-   - `verge-mihomo.exe` (PID 11224) 显式为 `clash-verge.exe` (PID 17868) 的直接子进程；
-   - 在此模式下，GUI 进程重启与核心进程重启强耦合：**GUI restart $\to$ core restart**；
-   - 伴随产生 **TUN reset** ("Meta Tunnel" 瞬时重建) 与代理端口 (7897) 临时连接断开，观测到 **~1.5–2.0s observed outage** (路由重置抖动)。
+2. **Windows Sidecar 现场证据剖析与结论分级**:
+   - **Sidecar 拓扑与父子强耦合 (Parent-child coupling)**: **`Host-observed`** (`verge-mihomo.exe` PID 11224 显式为 `clash-verge.exe` PID 17868 的直接子进程)；
+   - **提权隔离边界 (Privilege boundary requiring elevation)**: **`Host-observed`** (实测普通权限无法终止 GUI 进程)；
+   - **实际重启引发的内核退出、TUN 重建与 ~1.5–2.0s 抖动**: **`REPORTED / NOT DIRECTLY CAPTURED`** (虽源自父子进程树模型分析与日常运行经验，但在本轮受控探针执行期间未实际执行提权杀进程重拉，未捕获对应时序与连接日志，按纪律降级标定)；
+   - **零中断结论**: **`NOT ESTABLISHED`**。
 3. **Windows Service Mode 架构假说 (Inferred / Future Verification Candidate)**:
    - 理论上，若 Windows 主机安装并启用 CVR 官方 `clash-verge-service`（运行于 LocalSystem），Mihomo 将被服务独立接管；
    - **纪律约束**: 由于本次验证的主机现场未安装 CVR Service，"Windows Service Mode 下 GUI 重启核心完全不掉线 / 零中断" **尚未在 Windows 现场实测验证**，明确归类为 **`Inferred / future verification candidate`**，不能作为当前 Gate B 的 Verified 事实。
