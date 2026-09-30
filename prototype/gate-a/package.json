@@ -1,0 +1,17 @@
+{
+  "name": "clash-fleet-gate-a-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:concat": "node candidates/1-concat/build.js",
+    "build:esbuild": "node candidates/2-esbuild/build.js",
+    "build:rollup": "node candidates/3-rollup/build.js",
+    "build:all": "npm run build:concat && npm run build:esbuild && npm run build:rollup",
+    "test": "node harness/run-suite.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "rollup": "^4.34.0"
+  }
+}

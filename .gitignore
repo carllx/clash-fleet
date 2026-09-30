@@ -6,3 +6,5 @@
 node_modules/
 dist/
 *.log
+prototype/gate-a/bin/boa
+prototype/gate-a/dist/

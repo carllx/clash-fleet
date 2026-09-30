@@ -1,0 +1,15 @@
+{
+  "proxies": [
+    { "name": "HK 01 IEPL", "type": "ss", "server": "1.1.1.1", "port": 8388 },
+    { "name": "HK 02 BGP", "type": "ss", "server": "1.1.1.2", "port": 8388 },
+    { "name": "SG 01 IPLC", "type": "ss", "server": "1.1.1.3", "port": 8388 },
+    { "name": "US 01 Anycast", "type": "ss", "server": "1.1.1.4", "port": 8388 },
+    { "name": "Direct Special", "type": "direct" }
+  ],
+  "proxy-groups": [
+    { "name": "ORIGINAL_GROUP", "type": "select", "proxies": ["DIRECT"] }
+  ],
+  "rules": [
+    "MATCH,DIRECT"
+  ]
+}
