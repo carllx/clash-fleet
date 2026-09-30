@@ -22,7 +22,7 @@
 | **ACL 权限纪律** | **`REPORTED / NOT CAPTURED BY REPRODUCIBLE PROBE`** | Reported (Host PowerShell) | 现场 PowerShell `Get-Acl` 实测显示 `FullControl` SDDL 保持一致；但 probe 脚本内未做 Win32 自动化断言，按纪律降级标定 |
 | **被动文件替换生命周期** | **`NO_AUTO_APPLY_OBSERVED`** | Host-observed | 外部静默更新 `profiles/Script.js` 后，5s 内 `clash-verge.yaml` 的 mtime 与 SHA 完全未动，未感知脚本更新，与 macOS 一致 |
 | **确证的无头生效触发** | **`CONFIRMED_HEADLESS_TRIGGER = Elevated Process Restart`** | Host-observed / Source-verified | 因 `HKLM\...\AppCompatFlags\Layers` 配置了 `~ RUNASADMIN`，CVR GUI 运行于 High Integrity；普通进程无法 `taskkill`，外部拉起需管理员提权或提权计划任务 |
-| **服务连续性差异 (Service Continuity Delta)** | **`SIDECAR_CORE_RESTART_OBSERVED`** | Host-observed (Sidecar) / Inferred (Service) | 本机未安装 CVR Service，运行于 **Sidecar 模式**（`verge-mihomo.exe` 为 GUI 进程直接子进程）；GUI 重启实测必然导致内核重启与 TUN 重建；Service Mode 零中断仅作为未来候选假说 |
+| **服务连续性差异 (Service Continuity Delta)** | **`SIDECAR_CORE_RESTART_OBSERVED`** | Host-observed (Sidecar) / Inferred (Service) | 本机未安装 CVR Service，运行于 **Sidecar 模式**（`verge-mihomo.exe` 为 GUI 进程直接子进程）；GUI 重启实测必然导致内核重启与 TUN 重建；Service Mode 零中断仅作为未来候选假说；macOS 虽确证 Service 拓扑，但 GUI 重启时内核连续性与零中断未直接测量 (NOT ESTABLISHED) |
 | **非法脚本运行态测试** | **`NOT REQUIRED`** | Policy Rule | 安装版本与源码同源无分歧，共享 Boa `use_script` 降级逻辑已在 macOS 确证且源码支持，安全免除破坏性 live probe |
 | **基线还原与网络验证** | **`PASS`** | Host-observed | byte-for-byte 还原原始 `Script.js`，SHA-256 强校验完全一致；live proxy 流量持续正常 (HTTP 204) |
 
@@ -193,20 +193,25 @@ $$\mathbf{CONFIRMED\_HEADLESS\_TRIGGER} = \mathbf{Elevated\ Process\ Restart\ (t
 
 | 拓扑属性 | macOS 现状 (`prototype/deploy-gate-macos`) | Windows (当前主机现场) | Windows (理论 Service Mode) |
 |---|---|---|---|
-| **核心管理模式** | **Service 模式** (`clash-verge-service`) | **Sidecar 模式** | Windows Service 模式 |
+| **核心管理模式** | **Service 模式** (`clash-verge-service`) [Host-observed] | **Sidecar 模式** [Host-observed] | Windows Service 模式 [Inferred] |
 | **内核进程父级** | `launchd` / Privileged Helper Tool 托管 | `clash-verge.exe` 直接衍生 (`ParentProcessId = 17868`) | `clash-verge-service` (SYSTEM 托管) |
 | **控制通道** | 本地 Unix Domain Socket (`/var/run/.../verge-mihomo.sock`) | Windows 命名管道 (`\\.\pipe\verge-mihomo-sidecar-...`) | IPC / 本地管道 |
-| **GUI 重启对核心影响** | **核心持续运行** (GUI 退出不杀核心) | **核心随之重启** (GUI 进程退出带走子进程) | **预期核心保持存活** (待未来实测验证) |
-| **TUN 适配器状态** | 适配器由系统 Helper 持有保持在线 | 瞬时重建 ("Meta Tunnel" 重启) | 预期由系统服务持有不中断 |
-| **网络中断感知 (Outage)** | **零流量中断** | **实测短暂抖动 (~1.5s ~ 2.0s)** | **假说: 零流量中断** (Inferred) |
+| **GUI 重启对核心影响** | **未直接测量 PID 连续性** (源码推论解耦，未测定) | **核心随之重启** (GUI 进程退出带走子进程) [Host-observed] | **预期核心保持存活** (待未来实测验证) [Inferred] |
+| **TUN 适配器状态** | 未专门观测 TUN 瞬时状态 (NOT DIRECTLY MEASURED) | 瞬时重建 ("Meta Tunnel" 重启) [Host-observed] | 预期由系统服务持有不中断 [Inferred] |
+| **网络中断感知 (Outage)** | **零中断结论未确立 (NOT ESTABLISHED)** | **实测短暂抖动 (~1.5s ~ 2.0s)** [Host-observed] | **假说: 零流量中断** (Inferred) |
 
 ### 7.2 现场证据剖析与结论分级
-1. **Host-observed (现场实测事实)**:
+1. **macOS Gate B 参照结论精准分级**:
+   - **macOS Service topology**: **`Host-observed`** (已确证运行于 `clash-verge-service` Privileged Helper Tool 托管的 Service 模式)；
+   - **GUI/core continuity during GUI-only restart**: **`NOT DIRECTLY MEASURED in accepted macOS Gate B`** (macOS 实验重点在于优雅重启触发 Boa 脚本执行，未专门采样 GUI 重启前后 Mihomo 内核的 PID 连续性)；
+   - **预期解耦与连续性收益 (Reduced coupling / continuity benefit)**: **`Source-supported / Inferred`** (源自 CVR 源码中服务托管进程模型的架构分析)；
+   - **零中断声明 (Zero-outage claim)**: **`NOT ESTABLISHED`** (在已验收 macOS Gate B 中未作为测量事实确立)。
+2. **Windows Sidecar 现场实测事实 (Host-observed)**:
    - 当前 Windows 主机运行于 **Sidecar 模式**，`clash-verge-service` 未安装；
    - `verge-mihomo.exe` (PID 11224) 显式为 `clash-verge.exe` (PID 17868) 的直接子进程；
-   - 在此模式下，GUI 进程重启与核心进程重启强耦合：GUI 退出导致核心随之退出，GUI 拉起重新生成子进程；
-   - 伴随产生 TUN 适配器 ("Meta Tunnel") 的瞬时重置与代理端口 (7897) 短暂连接断开，观测到约 1.5–2.0 秒的路由重置抖动。
-2. **Inferred / Future Verification Candidate (架构假说与未来验证候选)**:
+   - 在此模式下，GUI 进程重启与核心进程重启强耦合：**GUI restart $\to$ core restart**；
+   - 伴随产生 **TUN reset** ("Meta Tunnel" 瞬时重建) 与代理端口 (7897) 临时连接断开，观测到 **~1.5–2.0s observed outage** (路由重置抖动)。
+3. **Windows Service Mode 架构假说 (Inferred / Future Verification Candidate)**:
    - 理论上，若 Windows 主机安装并启用 CVR 官方 `clash-verge-service`（运行于 LocalSystem），Mihomo 将被服务独立接管；
    - **纪律约束**: 由于本次验证的主机现场未安装 CVR Service，"Windows Service Mode 下 GUI 重启核心完全不掉线 / 零中断" **尚未在 Windows 现场实测验证**，明确归类为 **`Inferred / future verification candidate`**，不能作为当前 Gate B 的 Verified 事实。
 
