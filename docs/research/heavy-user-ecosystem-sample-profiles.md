@@ -2,7 +2,7 @@
 
 - **调研角色**: Lead Architect & Ecosystem Researcher
 - **基准提交**: `main @ c38fe06ec55407754eabddeec3cdd0c9cbe778d2`
-- **关联主报告**: [heavy-user-clash-ecosystem-survey.md](file:///Users/yamlam/Documents/GitHub/clash-fleet/docs/research/heavy-user-clash-ecosystem-survey.md)
+- **关联主报告**: [heavy-user-clash-ecosystem-survey.md](heavy-user-clash-ecosystem-survey.md)
 - **文档性质**: 逐项目一手物证与技术事实档案 (Primary-Source Evidence Profiles)
 
 ---
@@ -11,8 +11,8 @@
 
 本档案遵循严格的一手证据纪律，所有关键技术结论标注三级可信度标签：
 - **[Verified]**：经当前仓库源码、官方文档或本地环境实测直接验证的技术事实；
-- **[Reported]**：由项目发布说明、社区讨论或 Issue Tracker 记录但存在环境前置条件的事实；
-- **[Inferred]**：基于项目演进路径与架构约束推导出的工程结论。
+- **[Reported]**：由项目发布说明、社区讨论、Issue Tracker 记录或本地工作副本观察的事实；
+- **[Inferred / Synthesized]**：基于项目演进路径与架构约束推导出的工程推论与架构综合假说。
 
 ---
 
@@ -26,8 +26,8 @@
   - `src-tauri/src/enhance/mod.rs`（`CONTROL_PLANE_KEYS` 与 GUI 状态覆盖逻辑）[Verified]
 - **核心模式**:
   - **Source/Artifact 分离**: 用户编辑扩展脚本，应用运行期合并订阅生成临时的最终 YAML 交由内核 [Verified]。
-  - **控制面接管**: GUI 的 DNS、TUN、Hosts 与系统代理设置在配置流水线最末端强行覆盖配置，属于客户端专有控制层 [Verified]。
-  - **沙箱约束**: Boa 引擎无 Node.js/CommonJS 环境，无外部网络与文件系统 I/O，不支持复杂高阶语法 [Verified]。
+  - **控制面接管**: CVR-managed authoritative DNS/TUN subset 必须服从 CVR 并在配置流水线末端强行覆盖，属于客户端专有控制层 [Verified]。
+  - **沙箱约束**: Boa 0.22 引擎无 Node.js/CommonJS 环境，无外部网络与文件系统 I/O；语言特性兼容边界以 Gate A 已验证结果为准 [Verified]。
 
 ### 2.2 Loyalsoldier/clash-rules
 - **定位**: 纯粹的高性能规则数据构件分发库（采用量最大的轻量级规则集之一）。
@@ -46,7 +46,7 @@
   - 自动化构建脚本: 针对上游域名列表做去重、清洗、分类，并转译为各平台适配文件 [Reported]
 - **核心模式**:
   - **细粒度服务切片**: 拥有数千个独立服务子目录（如 OpenAI, YouTube, Netflix, Steam），每个服务提供 `domain`、`ip`、`classical` 等多种形态 [Verified]。
-  - **过度路由与维护膨胀 (Anti-Pattern)**: 规则集切片过于细碎，极易诱导用户配置几十个业务策略组，导致配置极其臃肿，DNS 解析开销急剧增加 [Inferred]。
+  - **过度路由与维护膨胀 (Anti-Pattern)**: 规则集切片过于细碎，极易诱导用户配置几十个业务策略组，导致配置极其臃肿，DNS 解析开销增加 [Inferred / Synthesized]。
 
 ### 2.4 SukkaW/Surge
 - **定位**: 网络基础设施专家打造的极致性能与防 DNS 污染规则分发体系。
@@ -72,7 +72,7 @@
   - 核心配置文件: `pref.ini` 与自定义规则模板 `base/` [Verified]
   - 规则注入机制: 基于 INI 键值对将远端 Rule Provider 拼装进 Clash 配置 [Verified]
 - **核心模式与历史包袱**:
-  - **历史包袱**: INI 配置模板语法晦涩、嵌套表达力弱，正则替换逻辑与业务规则深度耦合 [Inferred]。
+  - **历史包袱**: INI 配置模板语法晦涩、嵌套表达力弱，正则替换逻辑与业务规则深度耦合 [Inferred / Synthesized]。
   - **隐私风险**: 依赖公共托管后端（如公共托管的 subconverter API）存在严重的订阅泄露与安全隐患 [Reported]。
 
 ### 2.7 juewuy/ShellCrash
@@ -89,8 +89,8 @@
   - 规则仓库结构: `Clash/Ruleset/*.list` 与 `Clash/config/*.ini` [Verified]
   - 预设策略模式: ACL4SSR_Online, ACL4SSR_Online_Full, ACL4SSR_Online_Mini 等多种打包组合 [Verified]
 - **核心模式与历史包袱**:
-  - **单体规则黑盒**: 规则集包含成千上万条静态域名，缺乏精细的验证与淘汰机制，充斥着大量过时直连与代理判定 [Inferred]。
-  - **缺乏动态性**: 静态大规则导致配置调试极其困难，一旦某域名被误判直连或代理，用户难以局部覆盖 [Inferred]。
+  - **单体规则黑盒**: 规则集包含成千上万条静态域名，缺乏精细的验证与淘汰机制，充斥着大量过时直连与代理判定 [Inferred / Synthesized]。
+  - **缺乏动态性**: 静态大规则导致配置调试极其困难，一旦某域名被误判直连或代理，用户难以局部覆盖 [Inferred / Synthesized]。
 
 ### 2.9 MetaCubeX/meta-rules-dat
 - **定位**: 专为 Mihomo (原 Clash.Meta) 打造的现代二进制 GeoData 与 Rule-Set 官方生态。
@@ -98,7 +98,7 @@
   - 核心二进制产物: `geoip.dat`, `geosite.dat`, `country.mmdb`, 及专有 `.mrs` (Mihomo Rule-Set) 构件 [Verified]
   - Mihomo 官方配置指令: `format: mrs`，支持 `behavior: domain` 与 `behavior: ipcidr` [Verified]
 - **核心模式**:
-  - **极致加载性能与内存压缩**: `.mrs` 二进制格式大幅压缩规则体积，并在内核启动和重载时实现近乎零延迟的快速解析，解决纯文本百万行规则占用数百兆内存的问题 [Verified]。
+  - **二进制格式优化**: `.mrs` 二进制格式相较纯文本规则集显著压缩体积，提供更紧凑的高效存储与内核解析路径，降低长文本解析负担 [Verified]。
 
 ### 2.10 DustinWin/ruleset_geodata (现代极简白盒配置模式)
 - **定位**: 现代 Mihomo / Sing-box 极简白盒分流与 DNS 分流实践标杆。
