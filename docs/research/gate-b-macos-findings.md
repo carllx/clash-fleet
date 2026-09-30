@@ -235,7 +235,12 @@ function main(config, profileName) {
 ## 8. Gate B 最终结论与工程指导
 
 ### 8.1 决策判定分类 (Verdict)
-**Gate B macOS 判定结果**: **`REQUIRES_RESTART` (对于完全无头/无人值守部署工具)** / **`REQUIRES_CVR_ACTION` (对于有人值守或前台辅助场景)**。
+
+- **Raw external replacement**: `NO_AUTO_APPLY_OBSERVED`
+- **Confirmed headless apply trigger**: `GRACEFUL_RESTART`
+- **In-app apply trigger**: `PROFILE_RESELECT / CVR ACTION`
+- **Restart status**: `FIRST CONFIRMED AMONG TESTED EXTERNAL CANDIDATES`
+- **More lightweight CVR-owned headless trigger**: `NOT ESTABLISHED / FUTURE OPTIMIZATION QUESTION`
 
 ### 8.2 对下游部署器（Deployer）的架构规格指引 (Inferred Candidate Specification)
 基于 Gate B 实测证据，Clash Fleet 的客户端部署器建议遵循以下流水线规范：
@@ -247,7 +252,7 @@ $$\text{Pull} \to \text{Pre-flight Validate (Local Boa)} \to \text{Backup (Disk 
 2. **自主备份 (Client-side Backup)**:
    部署器在写入前将当前 `profiles/Script.js` 备份为 `profiles/Script.js.bak`。
 3. **原子应用与触发 (Atomic Apply & Trigger)**:
-   - 无头模式下：完成写入后，发送进程信号优雅重启 CVR；
+   - 当前已验证的无头实现候选为 **graceful restart**；若未来确认更轻量且稳定的 CVR-owned apply interface，可替换 trigger，而无需改变 `validate → backup → write → apply → verify → rollback` 的整体流水线；
    - 验证 `clash-verge.yaml` 的 mtime 刷新与 witness marker 出现；
 4. **验证失败回滚 (Auto-Rollback)**:
    若超时未观测到 witness 或内核未就绪，部署器立即还原备份脚本并再次重启恢复基线。
