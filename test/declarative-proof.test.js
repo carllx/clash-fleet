@@ -9,35 +9,50 @@ import { executeScriptWithBoa } from '../src/harness/boa-harness.js';
 describe('Declarative edit proof and end-to-end Boa 0.22 assembly suite', () => {
   const rootDir = process.cwd();
 
-  it('proves generated dist/Script.js executes in Boa 0.22 with declarative rules and sniffer', async () => {
-    const distScriptPath = path.join(rootDir, 'dist/Script.js');
-    assert.ok(fs.existsSync(distScriptPath), 'dist/Script.js must exist from build');
-    const scriptCode = fs.readFileSync(distScriptPath, 'utf8');
+  it('builds canonical source in isolated temp directory and verifies Boa 0.22 execution without relying on dist/', async () => {
+    // 创建独立沙箱临时目录，完全自包含构建，不依赖仓库级 dist/Script.js
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-canonical-test-'));
 
-    const sampleConfig = {
-      rules: ['MATCH,🔰 节点选择'],
-    };
+    try {
+      const isolatedScriptPath = path.join(tempDir, 'Script.js');
+      const buildResult = await buildFlatScript({
+        input: path.join(rootDir, 'src/index.js'),
+        output: isolatedScriptPath,
+      });
 
-    const output = await executeScriptWithBoa(scriptCode, sampleConfig, 'test-profile');
+      assert.ok(buildResult.code.length > 0);
+      assert.ok(fs.existsSync(isolatedScriptPath));
 
-    // 验证 Sniffer 嗅探注入
-    assert.ok(output.sniffer, 'output must contain sniffer');
-    assert.strictEqual(output.sniffer.enable, true);
-    assert.strictEqual(output.sniffer['parse-pure-ip'], true);
-    assert.deepStrictEqual(output.sniffer.sniff.TLS.ports, [443, 8443]);
+      const sampleConfig = {
+        rules: ['MATCH,🔰 节点选择'],
+      };
 
-    // 验证规则优先级：Reject -> Direct -> Existing Rules
-    assert.ok(Array.isArray(output.rules), 'output.rules must be an array');
-    const rejectIdx = output.rules.indexOf('RULE-SET,reject,REJECT');
-    const directIdx = output.rules.indexOf('IP-CIDR,198.18.0.1/32,DIRECT');
-    const existingIdx = output.rules.indexOf('MATCH,🔰 节点选择');
+      const output = await executeScriptWithBoa(buildResult.code, sampleConfig, 'test-profile');
 
-    assert.ok(rejectIdx !== -1, 'reject rule must be present');
-    assert.ok(directIdx !== -1, 'direct rule must be present');
-    assert.ok(existingIdx !== -1, 'existing rule must be preserved');
+      // 1. 验证 Sniffer 嗅探注入
+      assert.ok(output.sniffer, 'output must contain sniffer');
+      assert.strictEqual(output.sniffer.enable, true);
+      assert.strictEqual(output.sniffer['parse-pure-ip'], true);
+      assert.deepStrictEqual(output.sniffer.sniff.TLS.ports, [443, 8443]);
+      assert.deepStrictEqual(output.sniffer.sniff.HTTP.ports, [80, '8080-8880']);
 
-    assert.ok(rejectIdx < directIdx, 'reject rule must precede direct rule');
-    assert.ok(directIdx < existingIdx, 'direct rule must precede existing downstream rule');
+      // 2. 验证规范声明无悬挂 RULE-SET 引用 (No dangling RULE-SET in canonical policy-neutral build)
+      assert.ok(Array.isArray(output.rules), 'output.rules must be an array');
+      const hasDanglingRuleSet = output.rules.some((r) => r.startsWith('RULE-SET,'));
+      assert.strictEqual(hasDanglingRuleSet, false, 'must not contain dangling RULE-SET in canonical config');
+
+      // 3. 验证下游既有规则完整保留
+      assert.ok(output.rules.includes('MATCH,🔰 节点选择'), 'existing downstream rule must be preserved');
+      assert.strictEqual(output.rules[output.rules.length - 1], 'MATCH,🔰 节点选择');
+
+      // 4. 验证地区预设已在构建期内联编译为 JS 数据
+      assert.ok(buildResult.code.includes('"香港"'), 'contains compiled HK region name');
+      assert.ok(buildResult.code.includes('"🇭🇰"'), 'contains compiled HK emoji');
+      assert.ok(buildResult.code.includes('"日本"'), 'contains compiled JP region name');
+      assert.ok(buildResult.code.includes('"美国"'), 'contains compiled US region name');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('demonstrates adding declarative DIRECT/REJECT entries changes behavior without changing engine JS', async () => {
@@ -52,18 +67,19 @@ describe('Declarative edit proof and end-to-end Boa 0.22 assembly suite', () => 
       const directYamlPath = path.join(srcDir, 'rules/direct.yaml');
       const rejectYamlPath = path.join(srcDir, 'rules/reject.yaml');
 
-      fs.appendFileSync(
+      // 写入纯声明式规则项 (无未定义的 RULE-SET)
+      fs.writeFileSync(
         directYamlPath,
-        '\n  - "DOMAIN-SUFFIX,custom-declarative-direct.internal,DIRECT"\n',
+        'rules:\n  - "DOMAIN-SUFFIX,custom-declarative-direct.internal,DIRECT"\n',
         'utf8'
       );
-      fs.appendFileSync(
+      fs.writeFileSync(
         rejectYamlPath,
-        '\n  - "DOMAIN-SUFFIX,ad-tracking-telemetry.blocked,REJECT"\n',
+        'rules:\n  - "DOMAIN-SUFFIX,ad-tracking-telemetry.blocked,REJECT"\n',
         'utf8'
       );
 
-      // 2. 执行 Rollup Flat 扁平化构建
+      // 2. 执行 Rollup Flat 扁平化构建到沙箱隔离输出路径
       const customOutputPath = path.join(tempDir, 'dist/Script.js');
       const buildResult = await buildFlatScript({
         input: path.join(srcDir, 'index.js'),
@@ -84,7 +100,7 @@ describe('Declarative edit proof and end-to-end Boa 0.22 assembly suite', () => 
         'custom-declarative-profile'
       );
 
-      // 4. 验证新声明式规则生效并保持正确顺序
+      // 4. 验证新声明式规则生效并保持正确优先级：Reject -> Direct -> Downstream
       assert.ok(
         finalConfig.rules.includes('DOMAIN-SUFFIX,ad-tracking-telemetry.blocked,REJECT'),
         'newly declared reject rule must appear in output'
@@ -120,16 +136,5 @@ describe('Declarative edit proof and end-to-end Boa 0.22 assembly suite', () => 
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
-  });
-
-  it('demonstrates declarative region presets are loaded and compiled into Generated Script', () => {
-    const distScriptPath = path.join(rootDir, 'dist/Script.js');
-    const scriptCode = fs.readFileSync(distScriptPath, 'utf8');
-
-    // 验证地区数据已在构建期被内联编译为 JS 数据
-    assert.ok(scriptCode.includes('"香港"'), 'contains compiled HK region name');
-    assert.ok(scriptCode.includes('"🇭🇰"'), 'contains compiled HK emoji');
-    assert.ok(scriptCode.includes('"日本"'), 'contains compiled JP region name');
-    assert.ok(scriptCode.includes('"美国"'), 'contains compiled US region name');
   });
 });

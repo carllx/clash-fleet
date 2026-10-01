@@ -5,40 +5,40 @@ import {
   loadRulesFile,
   loadRegionsFile,
   loadAllDeclarativeSources,
+  parseRulesYaml,
 } from '../src/loader/declarative.js';
 
 describe('Declarative data loader suite (Build-time only)', () => {
   const rootDir = process.cwd();
 
-  it('loads direct.yaml and parses explicit rule declarations', () => {
+  it('loads canonical direct.yaml and reject.yaml as policy-neutral empty arrays', () => {
     const directPath = path.join(rootDir, 'src/rules/direct.yaml');
-    const directRules = loadRulesFile(directPath);
-
-    assert.ok(Array.isArray(directRules), 'directRules must be an array');
-    assert.ok(directRules.length >= 2, 'directRules should have entries');
-    assert.ok(
-      directRules.includes('IP-CIDR,198.18.0.1/32,DIRECT'),
-      'includes primary CIDR'
-    );
-    assert.ok(
-      directRules.includes('DOMAIN-SUFFIX,internal,DIRECT'),
-      'includes domain suffix'
-    );
-  });
-
-  it('loads reject.yaml and parses reject rule declarations', () => {
     const rejectPath = path.join(rootDir, 'src/rules/reject.yaml');
+
+    const directRules = loadRulesFile(directPath);
     const rejectRules = loadRulesFile(rejectPath);
 
+    assert.ok(Array.isArray(directRules), 'directRules must be an array');
+    assert.strictEqual(directRules.length, 0, 'canonical direct.yaml must be policy-neutral');
+
     assert.ok(Array.isArray(rejectRules), 'rejectRules must be an array');
-    assert.ok(
-      rejectRules.includes('RULE-SET,reject,REJECT'),
-      'includes reject rule-set declaration'
-    );
-    assert.ok(
-      rejectRules.includes('DOMAIN-SUFFIX,ads.example.com,REJECT'),
-      'includes ad domain rule'
-    );
+    assert.strictEqual(rejectRules.length, 0, 'canonical reject.yaml must be policy-neutral');
+  });
+
+  it('parses explicit rule declarations from YAML content (sanitized fixture)', () => {
+    const fixtureYaml = `
+rules:
+  - "IP-CIDR,198.18.0.1/32,DIRECT"
+  - "DOMAIN-SUFFIX,example.internal,DIRECT"
+  - "DOMAIN-SUFFIX,ads.example.com,REJECT"
+`;
+    const parsed = parseRulesYaml(fixtureYaml, 'test-fixture');
+
+    assert.ok(Array.isArray(parsed));
+    assert.strictEqual(parsed.length, 3);
+    assert.ok(parsed.includes('IP-CIDR,198.18.0.1/32,DIRECT'));
+    assert.ok(parsed.includes('DOMAIN-SUFFIX,example.internal,DIRECT'));
+    assert.ok(parsed.includes('DOMAIN-SUFFIX,ads.example.com,REJECT'));
   });
 
   it('loads regions.yaml and compiles region presets for future engine use', () => {
@@ -53,11 +53,11 @@ describe('Declarative data loader suite (Build-time only)', () => {
     assert.ok(regions.us, 'must contain us region');
   });
 
-  it('loadAllDeclarativeSources loads all required sources in one call', () => {
+  it('loadAllDeclarativeSources loads all canonical assets in one call', () => {
     const sources = loadAllDeclarativeSources({ rootDir: path.join(rootDir, 'src') });
 
-    assert.ok(sources.directRules.length > 0);
-    assert.ok(sources.rejectRules.length > 0);
+    assert.ok(Array.isArray(sources.directRules));
+    assert.ok(Array.isArray(sources.rejectRules));
     assert.ok(sources.regions.hk);
   });
 
@@ -65,6 +65,11 @@ describe('Declarative data loader suite (Build-time only)', () => {
     assert.throws(
       () => loadRulesFile(path.join(rootDir, 'src/rules/non-existent.yaml')),
       /File not found/
+    );
+
+    assert.throws(
+      () => parseRulesYaml('invalid: true', 'invalid-yaml'),
+      /Invalid rules schema/
     );
   });
 });

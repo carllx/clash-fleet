@@ -1,6 +1,3 @@
-# 自定义拦截规则清单 (Sanitized public declarations)
-# 拦截规则优先于自定义直连规则生效，防止广告绕过
-rules:
-  - "RULE-SET,reject,REJECT"
-  - "DOMAIN-SUFFIX,ads.example.com,REJECT"
-  - "DOMAIN-KEYWORD,adservice,REJECT"
+# 声明式拦截规则 (Policy-neutral skeleton for Issue #2)
+# 生产路由策略留待后续 Issue 迁移，本骨架仅保留规范数据结构
+rules: []
