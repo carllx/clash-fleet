@@ -45,7 +45,29 @@ export async function getBoaVersion(customBoaPath) {
 }
 
 /**
- * 执行静态合规检查与 Boa 语法解析验证 (CVR Static Marker & Syntax Gate)
+ * 安全创建临时脚本并在执行完成后自动清理的辅助函数
+ *
+ * @param {string} prefix 临时文件前缀
+ * @param {string} content 脚本内容
+ * @param {(filePath: string) => Promise<any>} executor 执行回调
+ * @returns {Promise<any>} 执行结果
+ */
+async function withTempScript(prefix, content, executor) {
+  const tmpFile = path.join(os.tmpdir(), `${prefix}-${crypto.randomBytes(8).toString('hex')}.js`);
+  try {
+    fs.writeFileSync(tmpFile, content, 'utf8');
+    return await executor(tmpFile);
+  } finally {
+    try {
+      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+    } catch {
+      // 忽略临时文件删除异常
+    }
+  }
+}
+
+/**
+ * 执行静态合规检查与 Boa 语法解析验证 (CVR Static Marker & Pure AST Syntax Gate)
  *
  * @param {string} code 待校验的脚本内容
  * @param {object} [options] 校验选项
@@ -75,25 +97,18 @@ export async function validateScript(code, options = {}) {
     errors.push('Script contains unstripped export statements (Boa script mode rejects export)');
   }
 
-  // 4. Boa 0.22.0 语法解析
+  // 4. Boa 0.22.0 纯静态 AST 语法树解析 (无运行时副作用)
   const bin = options.boaPath || findBoaBinary();
-  const tmpFile = path.join(os.tmpdir(), `boa-val-${crypto.randomBytes(8).toString('hex')}.js`);
 
   try {
-    fs.writeFileSync(tmpFile, code, 'utf8');
-    // 使用 -e 快速验证语法并检查顶层 main
-    await execFileAsync(bin, [tmpFile, '-e', 'typeof main === "function" ? "OK" : "MISSING_MAIN"']);
+    await withTempScript('boa-ast', code, async (tmpFile) => {
+      await execFileAsync(bin, ['-a', 'json', tmpFile]);
+    });
   } catch (err) {
     const stdout = (err.stdout || '').trim();
     const stderr = (err.stderr || '').trim();
     const errMsg = [stderr, stdout].filter(Boolean).join('\n') || err.message;
-    errors.push(`Boa 0.22 parse/eval error: ${errMsg}`);
-  } finally {
-    try {
-      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-    } catch {
-      // 忽略临时文件清理异常
-    }
+    errors.push(`Boa 0.22 syntax parse error: ${errMsg}`);
   }
 
   return {
@@ -114,7 +129,6 @@ export async function validateScript(code, options = {}) {
  */
 export async function executeScriptWithBoa(code, inputConfig, profileName = 'default', options = {}) {
   const bin = options.boaPath || findBoaBinary();
-  const tmpFile = path.join(os.tmpdir(), `boa-run-${crypto.randomBytes(8).toString('hex')}.js`);
 
   const serializedInput = JSON.stringify(inputConfig ?? {});
   const serializedProfile = JSON.stringify(String(profileName));
@@ -122,7 +136,7 @@ export async function executeScriptWithBoa(code, inputConfig, profileName = 'def
   const runnerScript = `
 ${code}
 
-// Bounded CVR runtime invocation harness
+// 受约束的 CVR 运行时沙箱调用桩
 (function() {
   if (typeof main !== 'function') {
     throw new TypeError("Callable global 'main' is not defined or not a function");
@@ -135,30 +149,25 @@ ${code}
 `;
 
   try {
-    fs.writeFileSync(tmpFile, runnerScript, 'utf8');
-    const { stdout, stderr } = await execFileAsync(bin, [tmpFile]);
+    return await withTempScript('boa-run', runnerScript, async (tmpFile) => {
+      const { stdout, stderr } = await execFileAsync(bin, [tmpFile]);
 
-    const startTag = '__FLEET_OUTPUT_START__';
-    const endTag = '__FLEET_OUTPUT_END__';
-    const startIndex = stdout.indexOf(startTag);
-    const endIndex = stdout.indexOf(endTag);
+      const startTag = '__FLEET_OUTPUT_START__';
+      const endTag = '__FLEET_OUTPUT_END__';
+      const startIndex = stdout.indexOf(startTag);
+      const endIndex = stdout.indexOf(endTag);
 
-    if (startIndex === -1 || endIndex === -1) {
-      throw new Error(`Execution did not return expected output token. Stderr: ${stderr}\nStdout: ${stdout}`);
-    }
+      if (startIndex === -1 || endIndex === -1) {
+        throw new Error(`Execution did not return expected output token. Stderr: ${stderr}\nStdout: ${stdout}`);
+      }
 
-    const payload = stdout.slice(startIndex + startTag.length, endIndex);
-    return JSON.parse(payload);
+      const payload = stdout.slice(startIndex + startTag.length, endIndex);
+      return JSON.parse(payload);
+    });
   } catch (err) {
     const stdout = (err.stdout || '').trim();
     const stderr = (err.stderr || '').trim();
     const detail = [stderr, stdout].filter(Boolean).join('\n') || err.message;
     throw new Error(`Boa execution failed: ${detail}`);
-  } finally {
-    try {
-      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-    } catch {
-      // 忽略临时文件清理异常
-    }
   }
 }

@@ -52,4 +52,16 @@ test('Rollup Flat deterministic build suite', async (t) => {
 
     assert.equal(hash1, hash2, 'Repeated builds must produce exact identical sha256 checksums');
   });
+
+  await t.test('fails when entrypoint does not expose main function', async () => {
+    const invalidEntry = path.resolve(__dirname, 'fixtures/modular/utils.js');
+    const targetFile = path.join(OUTPUT_DIR, 'no-main.js');
+
+    await assert.rejects(
+      async () => {
+        await buildFlatScript({ input: invalidEntry, output: targetFile });
+      },
+      /must expose top-level main function/i
+    );
+  });
 });

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { buildFlatScript } from '../build/rollup-flat.js';
-import { validateScript, getBoaVersion } from '../harness/boa-harness.js';
+import { validateScript, executeScriptWithBoa, getBoaVersion } from '../harness/boa-harness.js';
 
 /**
  * 打印命令行帮助说明
@@ -69,6 +69,22 @@ export function parseArgs(args) {
 }
 
 /**
+ * 格式化验证错误并阻断流程
+ *
+ * @param {string[]} errors 错误清单
+ * @param {string} summary 失败异常摘要
+ */
+function assertValidReport(errors, summary) {
+  if (errors && errors.length > 0) {
+    console.error('[fleet] Boa verification: FAILED');
+    for (const err of errors) {
+      console.error(`  - ${err}`);
+    }
+    throw new Error(summary);
+  }
+}
+
+/**
  * 执行 build 命令
  *
  * @param {object} options 构建选项
@@ -97,15 +113,12 @@ export async function runBuild(options) {
     }
 
     const report = await validateScript(buildResult.code);
-    if (!report.valid) {
-      console.error('[fleet] Boa verification: FAILED');
-      for (const err of report.errors) {
-        console.error(`  - ${err}`);
-      }
-      throw new Error('Boa verification gate rejected the built script');
-    }
+    assertValidReport(report.errors, 'Boa verification gate rejected the built script');
 
-    console.log('[fleet] Boa verification: PASSED (Static marker, syntax, and symbol safety verified)');
+    // 对构建产物执行沙箱运行契约验证
+    await executeScriptWithBoa(buildResult.code, { proxies: [], rules: [] }, 'default');
+
+    console.log('[fleet] Boa verification: PASSED (Static marker, AST syntax, and runtime callable verified)');
   }
 
   return buildResult;
@@ -128,13 +141,10 @@ export async function runVerify(options) {
   console.log(`[fleet] Verifying ${resolvedTarget}...`);
 
   const report = await validateScript(code);
-  if (!report.valid) {
-    console.error('[fleet] Boa verification: FAILED');
-    for (const err of report.errors) {
-      console.error(`  - ${err}`);
-    }
-    throw new Error('Script failed Boa compatibility gate');
-  }
+  assertValidReport(report.errors, 'Script failed Boa compatibility gate');
+
+  // 对目标脚本执行沙箱调用验证
+  await executeScriptWithBoa(code, { proxies: [], rules: [] }, 'default');
 
   console.log('[fleet] Boa verification: PASSED');
   return report;

@@ -75,6 +75,16 @@ export async function buildFlatScript({ input, output, banner }) {
   const rawChunk = outputChunks[0];
   const strippedCode = stripModuleExports(rawChunk.code);
 
+  // 严格确保最终代码包含原生可调用的 top-level main 函数
+  const hasMain =
+    strippedCode.includes('function main') ||
+    strippedCode.includes('const main') ||
+    strippedCode.includes('let main');
+
+  if (!hasMain) {
+    throw new Error("Build output must expose top-level main function ('function main', 'const main', or 'let main')");
+  }
+
   const finalBanner = banner
     ? `${banner.trim()}\n\n`
     : '// Clash Fleet generated Script.js - Deterministic Flat Build\n\n';
