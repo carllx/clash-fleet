@@ -2,17 +2,69 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { validateScript, executeScriptWithBoa, getBoaVersion } from '../src/harness/boa-harness.js';
+import {
+  validateScript,
+  executeScriptWithBoa,
+  getBoaVersion,
+  assertBoaCompatibilityEngine,
+} from '../src/harness/boa-harness.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const INVALID_SYNTAX_FILE = path.resolve(__dirname, 'fixtures/invalid-syntax.js');
 const MISSING_MAIN_FILE = path.resolve(__dirname, 'fixtures/missing-main.js');
 
 test('Boa 0.22 compatibility gate and CVR harness', async (t) => {
-  await t.test('detects exact boa 0.22.0 binary', async () => {
-    const version = await getBoaVersion();
+  await t.test('detects and asserts exact boa 0.22.0 binary', async () => {
+    const { version } = await assertBoaCompatibilityEngine();
     assert.match(version, /^boa 0\.22\.0/, `Expected boa 0.22.0, got "${version}"`);
+  });
+
+  await t.test('assertBoaCompatibilityEngine fails closed on missing binary', async () => {
+    await assert.rejects(
+      async () => {
+        await assertBoaCompatibilityEngine('/non/existent/boa-binary');
+      },
+      /Boa engine binary not found or inaccessible/i
+    );
+  });
+
+  await t.test('assertBoaCompatibilityEngine fails closed on wrong engine version (e.g. 0.23.0)', async () => {
+    const fakeBoaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-boa-'));
+    const fakeBoa = path.join(fakeBoaDir, 'boa');
+    fs.writeFileSync(
+      fakeBoa,
+      `#!/usr/bin/env node\nif (process.argv.includes('--version')) { console.log('boa 0.23.1'); process.exit(0); }\n`,
+      { mode: 0o755 }
+    );
+
+    try {
+      await assert.rejects(
+        async () => {
+          await assertBoaCompatibilityEngine(fakeBoa);
+        },
+        /Incompatible Boa engine: Expected exact "boa 0\.22\.0", found "boa 0\.23\.1"/i
+      );
+
+      // 验证 validateScript 和 executeScriptWithBoa 同样在版本不符时立即 fail-closed
+      const validCode = 'function main(config, profileName) { return config; }';
+      await assert.rejects(
+        async () => {
+          await validateScript(validCode, { boaPath: fakeBoa });
+        },
+        /Incompatible Boa engine/i
+      );
+
+      await assert.rejects(
+        async () => {
+          await executeScriptWithBoa(validCode, {}, 'default', { boaPath: fakeBoa });
+        },
+        /Incompatible Boa engine/i
+      );
+    } finally {
+      fs.rmSync(fakeBoaDir, { recursive: true, force: true });
+    }
   });
 
   await t.test('validateScript passes valid script with CVR static marker and clean code', async () => {

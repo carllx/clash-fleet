@@ -1,7 +1,11 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { buildFlatScript } from '../build/rollup-flat.js';
-import { validateScript, executeScriptWithBoa, getBoaVersion } from '../harness/boa-harness.js';
+import {
+  validateScript,
+  executeScriptWithBoa,
+  assertBoaCompatibilityEngine,
+} from '../harness/boa-harness.js';
 
 /**
  * 打印命令行帮助说明
@@ -104,13 +108,8 @@ export async function runBuild(options) {
 
   if (options.verify) {
     console.log('[fleet] Running Boa 0.22 compatibility gate...');
-    let boaVersion = 'unknown';
-    try {
-      boaVersion = await getBoaVersion();
-      console.log(`[fleet] Boa engine detected: ${boaVersion}`);
-    } catch (e) {
-      console.warn(`[fleet] Warning: Could not detect Boa version (${e.message})`);
-    }
+    const { version } = await assertBoaCompatibilityEngine();
+    console.log(`[fleet] Boa engine verified: ${version}`);
 
     const report = await validateScript(buildResult.code);
     assertValidReport(report.errors, 'Boa verification gate rejected the built script');
@@ -139,6 +138,10 @@ export async function runVerify(options) {
 
   const code = fs.readFileSync(resolvedTarget, 'utf8');
   console.log(`[fleet] Verifying ${resolvedTarget}...`);
+
+  console.log('[fleet] Running Boa 0.22 compatibility gate...');
+  const { version } = await assertBoaCompatibilityEngine();
+  console.log(`[fleet] Boa engine verified: ${version}`);
 
   const report = await validateScript(code);
   assertValidReport(report.errors, 'Script failed Boa compatibility gate');

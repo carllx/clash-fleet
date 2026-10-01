@@ -13,13 +13,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * 查找可用的 Boa 二进制文件路径
  *
  * 查找顺序:
- * 1. 环境变量 BOA_PATH
- * 2. 仓库内预置的 bin/boa
- * 3. 系统 PATH 中的 boa
+ * 1. 自定义指定路径 customBoaPath
+ * 2. 环境变量 BOA_PATH
+ * 3. 仓库内预置的 bin/boa
+ * 4. 系统 PATH 中的 boa
  *
- * @returns {string} boa 可执行文件绝对路径
+ * @param {string} [customBoaPath] 自定义路径
+ * @returns {string} boa 可执行文件绝对路径或命令名称
  */
-export function findBoaBinary() {
+export function findBoaBinary(customBoaPath) {
+  if (customBoaPath) {
+    return path.resolve(process.cwd(), customBoaPath);
+  }
+
   if (process.env.BOA_PATH && fs.existsSync(process.env.BOA_PATH)) {
     return path.resolve(process.env.BOA_PATH);
   }
@@ -39,9 +45,47 @@ export function findBoaBinary() {
  * @returns {Promise<string>} 版本输出字符串
  */
 export async function getBoaVersion(customBoaPath) {
-  const bin = customBoaPath || findBoaBinary();
+  const bin = findBoaBinary(customBoaPath);
   const { stdout } = await execFileAsync(bin, ['--version']);
   return stdout.trim();
+}
+
+/**
+ * 权威校验 Boa 引擎兼容性（必须精确匹配 boa 0.22.0）
+ *
+ * 遵循严格 Fail-Closed 原则：
+ * - 引擎缺失 -> 立即抛出异常阻断
+ * - 版本不匹配（如 0.21 或 0.23） -> 立即抛出异常阻断
+ * - 绝不允许 warning-and-continue 兜底绕过
+ *
+ * @param {string} [customBoaPath] 自定义 boa 可执行路径
+ * @returns {Promise<{ bin: string, version: string }>} 验证通过的引擎信息
+ */
+export async function assertBoaCompatibilityEngine(customBoaPath) {
+  const bin = findBoaBinary(customBoaPath);
+
+  let stdout;
+  try {
+    const res = await execFileAsync(bin, ['--version']);
+    stdout = res.stdout;
+  } catch (err) {
+    throw new Error(
+      `[fleet] Boa engine binary not found or inaccessible at "${bin}". ` +
+      `Run "npm run setup:boa" to prepare it or set BOA_PATH. (${err.message})`
+    );
+  }
+
+  const version = stdout.trim();
+  const isExact022 = /^boa 0\.22\.0(\s|$)/i.test(version);
+
+  if (!isExact022) {
+    throw new Error(
+      `[fleet] Incompatible Boa engine: Expected exact "boa 0.22.0", found "${version}". ` +
+      `Fail-closed compatibility gate rejected execution.`
+    );
+  }
+
+  return { bin, version };
 }
 
 /**
@@ -75,6 +119,8 @@ async function withTempScript(prefix, content, executor) {
  * @returns {Promise<{ valid: boolean, errors: string[], staticMarkerPassed: boolean }>} 验证报告
  */
 export async function validateScript(code, options = {}) {
+  // 必须首先通过权威的 Boa 0.22.0 引擎门禁校验 (Fail-Closed)
+  const { bin } = await assertBoaCompatibilityEngine(options.boaPath);
   const errors = [];
 
   // 1. CVR 源码静态 Marker 检查 (validate.rs)
@@ -98,8 +144,6 @@ export async function validateScript(code, options = {}) {
   }
 
   // 4. Boa 0.22.0 纯静态 AST 语法树解析 (无运行时副作用)
-  const bin = options.boaPath || findBoaBinary();
-
   try {
     await withTempScript('boa-ast', code, async (tmpFile) => {
       await execFileAsync(bin, ['-a', 'json', tmpFile]);
@@ -128,7 +172,8 @@ export async function validateScript(code, options = {}) {
  * @returns {Promise<object>} main 函数的返回对象
  */
 export async function executeScriptWithBoa(code, inputConfig, profileName = 'default', options = {}) {
-  const bin = options.boaPath || findBoaBinary();
+  // 必须首先通过权威的 Boa 0.22.0 引擎门禁校验 (Fail-Closed)
+  const { bin } = await assertBoaCompatibilityEngine(options.boaPath);
 
   const serializedInput = JSON.stringify(inputConfig ?? {});
   const serializedProfile = JSON.stringify(String(profileName));

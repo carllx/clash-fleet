@@ -46,4 +46,25 @@ test('CLI fleet build command suite', async (t) => {
       (err) => err.code !== 0
     );
   });
+
+  await t.test('fleet build fails closed when BOA_PATH points to incompatible version (e.g. 0.23.0)', async () => {
+    const fakeBoa = path.join(OUTPUT_DIR, 'fake-boa');
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    fs.writeFileSync(
+      fakeBoa,
+      '#!/bin/sh\necho "boa 0.23.0"\n',
+      { mode: 0o755 }
+    );
+
+    await assert.rejects(
+      async () => {
+        await execFileAsync(
+          process.execPath,
+          [CLI_PATH, 'build', '--input', FIXTURE_ENTRY, '--output', OUTPUT_FILE, '--verify'],
+          { env: { ...process.env, BOA_PATH: fakeBoa } }
+        );
+      },
+      (err) => err.code !== 0 && /Incompatible Boa engine/i.test(err.stderr || err.stdout)
+    );
+  });
 });

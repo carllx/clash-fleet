@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { buildFlatScript } from '../src/build/rollup-flat.js';
+import { executeScriptWithBoa } from '../src/harness/boa-harness.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_ENTRY = path.resolve(__dirname, 'fixtures/modular/index.js');
@@ -12,7 +13,7 @@ const OUTPUT_DIR = path.resolve(__dirname, '../.tmp/test-build');
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'Script.js');
 
 test('Rollup Flat deterministic build suite', async (t) => {
-  await t.test('builds modular sources into a single clean Script.js', async () => {
+  await t.test('builds modular sources into a single clean Script.js and proves symbol collision safety', async () => {
     fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
 
     const result = await buildFlatScript({
@@ -35,9 +36,23 @@ test('Rollup Flat deterministic build suite', async (t) => {
     assert.doesNotMatch(content, /\bprocess\./, 'Must not contain process references');
     assert.doesNotMatch(content, /__toCommonJS|__copyProps|__defProp/, 'Must not contain esbuild-style helper layer');
 
-    // 4. 验证模块同名局部符号自动重命名回归测试
-    // utils.js 与 rules.js 均定义了 TAG，Rollup 必须将其中一个重命名（例如 TAG$1）
-    assert.match(content, /TAG\$?\d*/, 'Symbol TAG must exist and be renamed safely');
+    // 4. 文本层验证：两处同名 private symbol 分别生成了独立的绑定声明，杜绝语法重定义
+    const hasOriginalTag = /const\s+TAG\s*=\s*['"]\[(?:utils|rules)\]['"]/.test(content);
+    const hasRenamedTag = /const\s+TAG[\w$]+\s*=\s*['"]\[(?:utils|rules)\]['"]/.test(content);
+    assert.ok(hasOriginalTag && hasRenamedTag, 'Must contain both original and safely renamed TAG declarations');
+
+    // 5. 核心：通过可观测的运行时行为 (Observable Runtime Behavior) 证明符号隔离
+    // 两个源模块均使用同名 private TAG，运行必须能区分 [utils] 和 [rules] 两个独立值
+    const runtimeOutput = await executeScriptWithBoa(
+      content,
+      { rules: ['DOMAIN,example.com', 'IP-CIDR,1.1.1.1/32'] },
+      'my-profile'
+    );
+
+    assert.equal(runtimeOutput.profile, 'my-profile');
+    assert.equal(runtimeOutput.meta.label, '[utils] my-profile', 'utils 模块的私有 TAG 必须独立保留');
+    assert.equal(runtimeOutput.meta.ruleTag, '[rules]', 'rules 模块的私有 TAG 必须独立保留');
+    assert.equal(runtimeOutput.meta.directCount, 1);
   });
 
   await t.test('produces byte-identical build output for identical inputs (deterministic build)', async () => {
