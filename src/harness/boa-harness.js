@@ -30,9 +30,18 @@ export function findBoaBinary(customBoaPath) {
     return path.resolve(process.env.BOA_PATH);
   }
 
-  const projectBoa = path.resolve(__dirname, '../../bin/boa');
-  if (fs.existsSync(projectBoa)) {
-    return projectBoa;
+  const isWin = process.platform === 'win32';
+  const projectBoaWin = path.resolve(__dirname, '../../bin/boa.exe');
+  const projectBoaUnix = path.resolve(__dirname, '../../bin/boa');
+
+  if (isWin && fs.existsSync(projectBoaWin)) {
+    return projectBoaWin;
+  }
+  if (fs.existsSync(projectBoaUnix)) {
+    return projectBoaUnix;
+  }
+  if (fs.existsSync(projectBoaWin)) {
+    return projectBoaWin;
   }
 
   return 'boa';

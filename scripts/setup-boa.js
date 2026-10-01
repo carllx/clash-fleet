@@ -12,6 +12,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { assertBoaCompatibilityEngine } from '../src/harness/boa-harness.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,8 +29,8 @@ const TARGET_BIN = path.join(BIN_DIR, IS_WIN ? 'boa.exe' : 'boa');
  */
 async function verifyBoaVersion(binPath) {
   try {
-    const { stdout } = await execFileAsync(binPath, ['--version']);
-    return /^boa 0\.22\.0(\s|$)/i.test(stdout.trim());
+    await assertBoaCompatibilityEngine(binPath);
+    return true;
   } catch {
     return false;
   }
@@ -73,15 +74,21 @@ async function main() {
     fs.unlinkSync(TARGET_BIN);
   }
 
-  // 2. 检查环境变量 BOA_PATH
-  if (process.env.BOA_PATH && fs.existsSync(process.env.BOA_PATH)) {
-    if (await verifyBoaVersion(process.env.BOA_PATH)) {
-      console.log(`[setup-boa] Using BOA_PATH: ${process.env.BOA_PATH}`);
-      fs.copyFileSync(process.env.BOA_PATH, TARGET_BIN);
-      fs.chmodSync(TARGET_BIN, 0o755);
-      return;
+  // 2. 检查环境变量 BOA_PATH (严格 Fail-Closed，不回退、不静默警告)
+  if (process.env.BOA_PATH) {
+    if (!fs.existsSync(process.env.BOA_PATH)) {
+      throw new Error(`[setup-boa] BOA_PATH specified but file does not exist: ${process.env.BOA_PATH}`);
     }
-    console.warn(`[setup-boa] Warning: BOA_PATH (${process.env.BOA_PATH}) does not match exact version boa 0.22.0.`);
+    const isValid = await verifyBoaVersion(process.env.BOA_PATH);
+    if (!isValid) {
+      throw new Error(
+        `[setup-boa] BOA_PATH (${process.env.BOA_PATH}) does not match exact version boa 0.22.0. Fail-closed.`
+      );
+    }
+    console.log(`[setup-boa] Using BOA_PATH: ${process.env.BOA_PATH}`);
+    fs.copyFileSync(process.env.BOA_PATH, TARGET_BIN);
+    fs.chmodSync(TARGET_BIN, 0o755);
+    return;
   }
 
   // 3. 检查系统全局 PATH 中的 boa

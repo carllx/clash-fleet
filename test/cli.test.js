@@ -67,4 +67,15 @@ test('CLI fleet build command suite', async (t) => {
       (err) => err.code !== 0 && /Incompatible Boa engine/i.test(err.stderr || err.stdout)
     );
   });
+
+  await t.test('fleet verify validates target script using positional argument', async () => {
+    const { stdout } = await execFileAsync(process.execPath, [
+      CLI_PATH,
+      'verify',
+      OUTPUT_FILE,
+    ]);
+
+    assert.match(stdout, /Verifying/i);
+    assert.match(stdout, /Boa verification: PASSED/i);
+  });
 });

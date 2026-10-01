@@ -18,17 +18,15 @@ Clash Fleet CLI - 多设备配置分发与确定性构建工具链
   fleet <command> [options]
 
 命令:
-  build      打包模块化 JavaScript 源码为 CVR 兼容的单一 Script.js
+  build      打包模块化 JavaScript 源码为 CVR 兼容的单一 Script.js (强制执行 Boa 0.22 门禁)
   verify     使用 Boa 0.22 门禁验证目标 Script.js 的语法与契约
 
 选项 (build):
   --input, -i    入口文件路径 (默认: src/index.js)
   --output, -o   产物输出路径 (默认: dist/Script.js)
-  --verify, -v   打包完成后自动执行 Boa 0.22 兼容性校验 (默认开启)
-  --no-verify    跳过 Boa 验证
 
 选项 (verify):
-  --input, -i    待验证脚本路径 (默认: dist/Script.js)
+  --input, -i    待验证脚本路径 (默认: dist/Script.js，亦支持位置参数传入)
 
 通用选项:
   --help, -h     查看帮助信息
@@ -47,25 +45,17 @@ export function parseArgs(args) {
     command: args[0] || 'help',
     input: null,
     output: null,
-    verify: true,
-    help: false,
-    version: false,
   };
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--help' || arg === '-h') {
-      parsed.help = true;
-    } else if (arg === '--version' || arg === '-V') {
-      parsed.version = true;
-    } else if (arg === '--input' || arg === '-i') {
+    if (arg === '--input' || arg === '-i') {
       parsed.input = args[++i];
     } else if (arg === '--output' || arg === '-o') {
       parsed.output = args[++i];
-    } else if (arg === '--verify' || arg === '-v') {
-      parsed.verify = true;
-    } else if (arg === '--no-verify') {
-      parsed.verify = false;
+    } else if (!arg.startsWith('-') && !parsed.input) {
+      // 捕获首个位置参数 (例如: fleet verify dist/Script.js)
+      parsed.input = arg;
     }
   }
 
@@ -89,7 +79,7 @@ function assertValidReport(errors, summary) {
 }
 
 /**
- * 执行 build 命令
+ * 执行 build 命令 (构建 + 强制 Fail-Closed 门禁校验)
  *
  * @param {object} options 构建选项
  */
@@ -106,19 +96,17 @@ export async function runBuild(options) {
 
   console.log(`[fleet] Build complete: ${buildResult.outputPath} (SHA-256: ${buildResult.hash})`);
 
-  if (options.verify) {
-    console.log('[fleet] Running Boa 0.22 compatibility gate...');
-    const { version } = await assertBoaCompatibilityEngine();
-    console.log(`[fleet] Boa engine verified: ${version}`);
+  console.log('[fleet] Running Boa 0.22 compatibility gate...');
+  const { version } = await assertBoaCompatibilityEngine();
+  console.log(`[fleet] Boa engine verified: ${version}`);
 
-    const report = await validateScript(buildResult.code);
-    assertValidReport(report.errors, 'Boa verification gate rejected the built script');
+  const report = await validateScript(buildResult.code);
+  assertValidReport(report.errors, 'Boa verification gate rejected the built script');
 
-    // 对构建产物执行沙箱运行契约验证
-    await executeScriptWithBoa(buildResult.code, { proxies: [], rules: [] }, 'default');
+  // 对构建产物执行沙箱运行契约验证
+  await executeScriptWithBoa(buildResult.code, { proxies: [], rules: [] }, 'default');
 
-    console.log('[fleet] Boa verification: PASSED (Static marker, AST syntax, and runtime callable verified)');
-  }
+  console.log('[fleet] Boa verification: PASSED (Static marker, AST syntax, and runtime callable verified)');
 
   return buildResult;
 }
