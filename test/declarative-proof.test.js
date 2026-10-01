@@ -122,7 +122,7 @@ describe('Declarative edit proof and end-to-end Boa 0.22 assembly suite', () => 
     }
   });
 
-  it('demonstrates declarative region presets are loaded and compiled into generated artifact', () => {
+  it('demonstrates declarative region presets are loaded and compiled into Generated Script', () => {
     const distScriptPath = path.join(rootDir, 'dist/Script.js');
     const scriptCode = fs.readFileSync(distScriptPath, 'utf8');
 

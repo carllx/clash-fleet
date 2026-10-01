@@ -12,7 +12,6 @@ import YAML from 'yaml';
  * 加载并校验声明式规则文件
  *
  * @param {string} filePath 规则文件绝对路径
- * @param {string} filePath 规则文件绝对路径
  * @returns {string[]} 标准化后的规则字符串数组
  */
 export function loadRulesFile(filePath) {
