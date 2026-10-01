@@ -22,6 +22,10 @@ _Avoid_: Common config, global rules
 处理特定宿主操作系统环境（如文件路径、权限探测、生命周期触发与特定进程规则）的适配层。
 _Avoid_: OS script, client app
 
+**Rule Asset Provenance**:
+对 Fleet 所依赖外部规则数据集的来源、不可变修订或动态依赖属性的显式溯源定义。
+_Avoid_: Rule version, rule source
+
 ### 策略组拓扑 (Policy Topology)
 
 **Policy Topology**:
@@ -47,5 +51,5 @@ _Avoid_: Node group, country group
 _Avoid_: Update script, sync process
 
 **Runtime Verification**:
-部署触发后对 CVR/Mihomo 进程存活、API 响应、生成配置的不变量结构以及网络连通性执行的综合验证。
+部署触发后对 CVR/Mihomo 进程存活、生成配置的语义不变量结构以及有效代理连通性执行的综合验证。
 _Avoid_: Health check, ping test
