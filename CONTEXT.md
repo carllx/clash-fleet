@@ -11,7 +11,7 @@ Clash Fleet 是用于 Clash Verge Rev / Mihomo 的多设备配置分发、部署
 _Avoid_: User script, runtime config, source script
 
 **Build Artifact**:
-通过确定性构建和校验后产出的不可变版本化交付物，具备唯一的 SHA-256 校验和。
+通过确定性构建和校验后产出的版本化交付物，具备确定性的 SHA-256 校验和，并通过不可变性门禁保护。
 _Avoid_: Code, release package, profile
 
 **Shared Core**:

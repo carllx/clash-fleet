@@ -33,12 +33,12 @@ flowchart TD
         Lint["Lint & Unit Test"]
         Rollup["Rollup Flat / Scope Hoisting\n(生成单一入口 main)"]
         Strip["Strip Export Adapter"]
-        Smoke["Boa 0.22.0 Runtime Smoke Gate"]
+        Smoke["Boa 0.22.0 Compatibility Gate"]
         Pack["Bundle Script.js + SHA256SUMS"]
     end
 
     subgraph Release["Release Authority (GitHub Releases)"]
-        Tag["SemVer Tagged Release\n(不可变构建构件)"]
+        Tag["Versioned GitHub Release\n+ Checksums + Immutability Gate"]
     end
 
     Rules --> Rollup
@@ -60,16 +60,18 @@ flowchart TD
 基于 Gate A 构建门禁实测验证结论 `[Verified]`：
 - 采用 **Rollup Flat (Scope Hoisting)** 模式将模块化源码扁平化展开至单一作用域；
 - 配合末端确定性适配器剥离 `export { main };`，生成纯净的原生顶层 `function main(config, profileName)` 声明；
-- **零运行时宿主垫片**: 杜绝 esbuild 等打包器引入的 `__toCommonJS` / `__copyProps` 反射开销，生成体积最小（约 3.4KB）、对 Boa 沙箱语义摩擦最小的代码；
-- **编译期符号隔离**: 由 Rollup AST 级静态分析自动重命名模块私有局部变量，规避简易拼接（Concat）必然遭遇的符号命名冲突。
+- **零运行时宿主垫片**: 杜绝 esbuild 等打包器引入的 `__toCommonJS` / `__copyProps` 反射开销，生成体积最小（在 Gate A fixture 中约 3.4KB）、对 Boa 沙箱语义摩擦最小的代码；
+- **编译期符号隔离**: 由 Rollup AST 级静态分析自动重命名模块私有局部变量，规避简易拼接（Concat）存在的符号冲突风险。
 
 ### 2.3 CI 质量门禁与 Boa 0.22 兼容性验证 `[Architecture Decision]`
 - CVR 主线明确锁定运行引擎为 `boa_engine = "0.22.0"` `[Verified]`；
-- CI 持续集成流水线必须内置 **Boa 0.22.0 Smoke Test Gate**：
+- CI 持续集成流水线必须内置 **Boa 0.22.0 Compatibility Harness**：
+  要求基于精确锁定的 `boa_engine = "0.22.0"` 运行环境执行验证：
   1. 静态字符串 Marker 检查（确保包含 `function main` 等合法声明）；
-  2. 使用官方 `boa-cli 0.22.0` 执行生成产物的真实 AST 语法解析；
-  3. 执行合成 fixture 输入调用 `main(config, profileName)` 并验证关键策略组结构与 Deep Equal 输出。
-- 任何无法在 Boa 0.22 环境通过验证的代码一律禁止进入 Release 打包。
+  2. 产物的真实 Boa AST 语法解析与 `eval`；
+  3. 全局作用域下调用 callable global `main(config, profileName)` 并验证关键策略组语义结构与 Deep Equal 输出。
+- **实现封装解耦**: 该门禁可采用 embedded `boa_engine` 测试套件或经实测等价的 CLI 工具封装实现，不在架构规格中提前机械锁定外部 CLI 打包方式。
+- 任何无法在该环境中通过验证的代码一律禁止进入 Release 打包。
 
 ---
 
@@ -80,7 +82,7 @@ flowchart TD
 | **策略组拓扑与分流规则** | **Fleet Script.js** | 动态构建业务组、调度组与地区池，挂载 Rule Providers | `[Architecture Decision]` |
 | **Sniffer 域名嗅探** | **Fleet Script.js** | 注入 `sniffer` 并在 `tls`/`http` 开启 `parse-pure-ip: true` 作为共享配置行为 | `[Architecture Decision]` |
 | **大型静态规则数据集** | **Rule Providers** | 外部托管标准规则（Loyalsoldier / MetaCubeX），内核异步加载 | `[Architecture Decision]` |
-| **节点规范化与分类** | **Fleet Script.js** | 运行期在内存中对 `config.proxies` 进行清洗、重命名与国家正则归类 | `[Architecture Decision]` |
+| **节点规范化与分类** | **Fleet Script.js** | 运行期在内存中对 `config.proxies` 进行清洗、衍生分类与国家正则归类 | `[Architecture Decision]` |
 | **TUN / DNS 权威字段** | **CVR App State** | CVR GUI 接管的权威控制面字段，流水线末端强制覆盖，Fleet 避免越权 | `[Verified]` |
 | **系统代理开关 (System Proxy)** | **OS / CVR Client** | 操作系统级系统网络配置，脱离配置脚本管辖 | `[Verified]` |
 
@@ -167,7 +169,7 @@ flowchart TD
   - 默认首选指向 Tier 1.5 优选组，同时允许用户手动指定直接选择 Tier 2 地区池或特定物理节点；
 - **Tier 1.5 (调度优选层，按需创建)**:
   - **核心约束**: **只引用 Tier 2 地区组名，严禁直接挂载物理节点**；
-  - 实现零冗余测速健康检查开销，仅在地区池粒度进行调度；非必要业务组不强行制造空转的 Tier 1.5；
+  - 架构意图在于避免直接重复挂载物理节点，将健康探测所有权尽量收敛集中在 Tier 2 地区池，避免明显的重复探测开销，仅在地区池粒度进行优选调度；非必要业务组不强行制造空转的 Tier 1.5；
 - **Tier 2 (物理地区池，`url-test`)**:
   - 依据规范化正则表达式绑定具体的物理代理节点并执行单点健康探测；
   - **动态裁剪**: 若订阅中某个地区池节点数为 0，引擎自动裁剪该地区组，并从上层 Tier 1 / Tier 1.5 的引用列表中剔除，杜绝无效路由。
@@ -182,10 +184,14 @@ flowchart TD
 - **不跨 Profile 自动聚合**: Fleet V1 不负责把多个独立 CVR Profiles 自动聚合，亦不暗示多个独立 Profile 会自动合并出现在 `config.proxies` 中。如果用户需要同时使用多个订阅的物理节点，必须先在本地 CVR 中通过其内置的 Profile 合并、Proxy Provider 或本地配置机制组合成当前生效配置；
 - **纯函数内存处理**: Fleet 扩展脚本仅处理 CVR 实际传入的当次生效配置 (`config.proxies`)，Fleet 自身不抓取、不合并亦不持有任何订阅 Secrets。
 
-### 6.2 内存级节点规范化与等价去重流水线 `[Architecture Decision]`
+### 6.2 内存级节点规范化、去重与引用完整性守卫 `[Architecture Decision]`
 当 CVR 刷新订阅并执行扩展脚本时，Fleet `Script.js` 在纯内存环境中对传入的 `config.proxies` 执行标准化清洗：
 1. **垃圾过滤**: 剔除流量剩余提示、通知信息等无效节点；
-2. **名称标准化**: 统一清洗协议前缀，规范化国旗与地区标识（如 `🇭🇰 HK | 香港 01`）；
+2. **名称衍生与引用完整性守卫 (Normalized Label vs Referential Integrity)**:
+   - 地区分类与策略匹配优先使用**派生的规范化标签 (derived normalized label)** 进行正则匹配，默认不破坏性修改原始 `proxy.name`；
+   - 默认坚持“normalize for matching/classification”原则；
+   - 若未来实现确需修改物理节点的 `proxy.name`，必须同时原子扫描并更新配置中所有相关 `proxy-groups` 的节点引用列表，严格保证引用完整性（Referential Integrity）；
+   - 无法严格证明全配置引用一致性时，坚决禁止执行破坏性 rename；
 3. **安全语义等价去重 (Equivalence Dedup)**: 
    - 严禁仅依赖 `server` + `port` 去重（因不同协议、认证凭据、TLS/SNI 设置可共享端口）；
    - 只有当完整的规范化节点身份（Normalized Proxy Identity，涵盖 server, port, type, cipher, uuid/password, transport, tls/sni 等关键配置）被证明语义完全等价时才允许去重；
@@ -215,7 +221,9 @@ flowchart TD
 | **实测现场拓扑 (Observed Test Host)** | **Service 模式** (`clash-verge-service` 托管) `[Host-observed]` | **Sidecar 模式** (`verge-mihomo.exe` 直接子进程) `[Host-observed]` |
 | **实测现场权限 (Observed Test Host)** | 标准普通用户 (Non-root, uid 501) `[Host-observed]` | 高完整性/管理员权限 (`~ RUNASADMIN` 兼容项) `[Host-observed]` |
 | **生产适配器动态探测要求** | 动态探测 Service vs Sidecar 托管状态；动态选择生命周期触发路径 | 动态探测 Service vs Sidecar；**动态探测特权级别 (Standard vs Elevated)**，严禁泛化“Windows 总是需要提权” |
-| **无头生效触发路径** | 普通权限 `kill -15 <PID>` + `open -a "Clash Verge"` `[Verified]` | 依据探测特权选择 `Stop-Process` / `taskkill` + `Start-Process` `[Verified]` |
+| **无头生效触发路径** | 普通权限 `kill -15 <PID>` + `open -a "Clash Verge"` `[Host-observed / Verified]` | 依据动态探测特权选择 `Stop-Process` / `taskkill` + `Start-Process` `[Source-supported / Inferred]` |
+
+*注：Windows 生产适配器将受控进程重启作为当前可行候选机制，但由于 Gate B 中完整 elevated restart 链条标定为 Reported / Not Directly Captured，具体触发链路需在实现阶段完成现场全链路闭环核准。*
 
 ---
 
@@ -227,7 +235,7 @@ flowchart TD
   - `SHA256SUMS.txt`: 包含 `Script.js` 的 SHA-256 强密码学校验和清单；
 - **不可变发布策略**:
   - 采用语义化版本标签（SemVer Tag，如 `v1.0.0`）；
-  - 结合校验和核验与不可变发布策略（Enforced/Verified Immutability Policy），具体 GitHub Release 资产防篡改策略作为 Release Implementation Gate 落地；
+  - 结合校验和核验与不可变性门禁（Enforced/Verified Immutability Gate），不将 SemVer 标签本身等同于已生效的不可变保护；具体的 GitHub Release 资产防篡改策略作为 Release Implementation Gate 落地；
 - **明确规避清单**:
   - 严禁使用 mutable raw git branch 作为生产部署源；
   - 严禁使用 GitHub Gist 作为生产分发凭据；
@@ -241,8 +249,10 @@ flowchart TD
    - 若某 Rule Provider 因业务必须指向动态更新（如 `HEAD` / `master`），必须在 Release Manifest 中显式标注为 `Dynamic External Dependency`，且该 Release 不得宣称对该外部规则具备 fully reproducible 保证；
 3. **发布清单溯源记录 (Provenance Manifest)**:
    - 每个 Fleet Release 必须记录所引用的每个 Rule Provider 的唯一标识、来源策略与版本/URL 快照；
-4. **回滚语义与规则缓存 (Rollback Semantics)**:
-   - 当部署器执行 `Script.js` 回滚时，保持与当时生效配置匹配的规则缓存状态，具体资产同步与快照机制作为后续 Release/Implementation Gate 落实。
+4. **回滚语义与规则资产状态 (Rollback Semantics)**:
+   - **固定版本规则资产 (Pinned Rule Asset)**: 部署器执行 rollback 时，必须同步恢复与目标 Fleet Release Manifest 完全对应的固定版本规则引用/资产，以保证分流行为的可重现回滚 (reproducible behavioral rollback)；
+   - **动态外部依赖 (Dynamic External Dependency)**: 对于指向动态可变上游最新更新的规则，由于外部内容已随时间演进，脚本回滚无法保证恢复历史规则内容，部署器必须显式报告为 `partial / non-fully-reproducible rollback`，绝对不得将当前机器偶然存在的本地缓存视为可靠的回滚权威；
+   - 具体资产快照与缓存恢复机制作为后续 Release Implementation Gate 落实。
 
 ---
 
@@ -313,7 +323,7 @@ Gate B 已确证：单纯检查 `clash-verge.yaml` 的修改时间（mtime）不
 
 1. **Canonical GitHub Release 纯粹性**:
    - 官方/公共 GitHub Release **仅由受版本控制的公共源码构建**；
-   - 官方交付的 `Script.js` 构件具有全球唯一的 SHA-256 Checksum，绝对不打包亦不包含任何私有/本地覆盖数据；
+   - 官方交付的 `Script.js` 构件具有确定性的 SHA-256 Checksum (deterministic SHA-256 checksum)，绝对不打包亦不包含任何私有/本地覆盖数据；
 2. **私有/本地规则停留在本地端 (Device-Local Boundary)**:
    - 用户的私有白名单（如内网域名、专用直连 IP 等）保持在设备本地；
    - 优先通过 CVR 本地规则集、本地 Profile/Merge、或作为客户端专有的本地扩展缝隙（Client-Owned Extension Seam）进行加载；
@@ -329,7 +339,7 @@ Clash Fleet V1 严格限定工程范围：
 - **DO**:
   - 最小但专业的 CLI 工具链（`fleet build`, `fleet deploy`, `fleet verify`）；
   - 确定性 Rollup Flat 构建器与 Boa 0.22 验证器；
-  - GitHub Actions 自动化不可变构件发布；
+  - GitHub Actions 自动化版本化构件发布，并通过 release immutability gate；
   - 具备动态特权与拓扑探测的跨平台受控部署器。
 - **DO NOT**:
   - 坚决不开发 Electron / Tauri GUI 桌面；
