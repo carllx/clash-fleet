@@ -10,7 +10,7 @@ Accepted
 
 - **自建订阅聚合转换服务 / 远端 GitHub Actions 加密拉取**：需要维护云端服务或将凭据托管在 CI Secrets，增加了服务可用性依赖与凭据外泄攻击面。
 - **引入 Sub-Store 作为强制依赖**：Sub-Store 需常驻独立 Node/Docker 服务或复杂的本地环境，大幅提高了轻量 CLI 工具链的安装门槛。
-- **客户端本地隔离 (Client-Isolated Boundary)**：订阅凭据与定时拉取完全由本地 CVR GUI 保留；Fleet 发布的脚本仅在 CVR 组装配置的流水线末端（Enhance 阶段）以纯函数方式接收 `config.proxies` 并进行清洗、重命名与策略组挂载。
+- **客户端本地隔离 (Client-Isolated Boundary)**：订阅凭据与定时拉取完全由本地 CVR GUI 保留；Fleet 发布的脚本仅在 CVR 组装配置的流水线末端（Enhance 阶段）以纯函数方式接收 `config.proxies` 执行规范化匹配/衍生分类与策略组挂载，不破坏性修改原始 `proxy.name`；若未来确需 rename，必须保证所有相关引用同步更新与引用完整性（Referential Integrity）。
 
 ## Consequences
 

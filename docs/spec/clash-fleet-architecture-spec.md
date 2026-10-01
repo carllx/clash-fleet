@@ -1,6 +1,6 @@
 # Clash Fleet 架构规格说明书 (Architecture Spec Candidate)
 
-- **文档状态**: 架构规格冻结候选草案 (Architecture Freeze Candidate — Pending Browser Review)
+- **文档状态**: 生产架构规格说明书 (Canonical Architecture Spec — Browser Review PASS)
 - **基准提交**: `main @ d90a85ade11e6a17c70386dae8190a8803a2b83f`
 - **日期**: 2026-10-01
 - **适用版本**: V1 Toolchain
