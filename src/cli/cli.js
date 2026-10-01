@@ -68,7 +68,7 @@ export function parseArgs(args) {
  * @param {string[]} errors 错误清单
  * @param {string} summary 失败异常摘要
  */
-function assertValidReport(errors, summary) {
+function assertNoErrors(errors, summary) {
   if (errors && errors.length > 0) {
     console.error('[fleet] Boa verification: FAILED');
     for (const err of errors) {
@@ -76,6 +76,26 @@ function assertValidReport(errors, summary) {
     }
     throw new Error(summary);
   }
+}
+
+/**
+ * 执行完整的 Boa 0.22 门禁校验流水线 (版本 -> 静态语法 -> 运行时沙箱契约)
+ *
+ * @param {string} code 目标脚本代码
+ * @param {string} failSummary 失败提示信息
+ */
+async function verifyScriptPipeline(code, failSummary) {
+  console.log('[fleet] Running Boa 0.22 compatibility gate...');
+  const { version } = await assertBoaCompatibilityEngine();
+  console.log(`[fleet] Boa engine verified: ${version}`);
+
+  const report = await validateScript(code);
+  assertNoErrors(report.errors, failSummary);
+
+  // 对目标脚本执行沙箱运行契约验证
+  await executeScriptWithBoa(code, { proxies: [], rules: [] }, 'default');
+
+  console.log('[fleet] Boa verification: PASSED (Static marker, AST syntax, and runtime callable verified)');
 }
 
 /**
@@ -96,17 +116,7 @@ export async function runBuild(options) {
 
   console.log(`[fleet] Build complete: ${buildResult.outputPath} (SHA-256: ${buildResult.hash})`);
 
-  console.log('[fleet] Running Boa 0.22 compatibility gate...');
-  const { version } = await assertBoaCompatibilityEngine();
-  console.log(`[fleet] Boa engine verified: ${version}`);
-
-  const report = await validateScript(buildResult.code);
-  assertValidReport(report.errors, 'Boa verification gate rejected the built script');
-
-  // 对构建产物执行沙箱运行契约验证
-  await executeScriptWithBoa(buildResult.code, { proxies: [], rules: [] }, 'default');
-
-  console.log('[fleet] Boa verification: PASSED (Static marker, AST syntax, and runtime callable verified)');
+  await verifyScriptPipeline(buildResult.code, 'Boa verification gate rejected the built script');
 
   return buildResult;
 }
@@ -127,18 +137,8 @@ export async function runVerify(options) {
   const code = fs.readFileSync(resolvedTarget, 'utf8');
   console.log(`[fleet] Verifying ${resolvedTarget}...`);
 
-  console.log('[fleet] Running Boa 0.22 compatibility gate...');
-  const { version } = await assertBoaCompatibilityEngine();
-  console.log(`[fleet] Boa engine verified: ${version}`);
-
-  const report = await validateScript(code);
-  assertValidReport(report.errors, 'Script failed Boa compatibility gate');
-
-  // 对目标脚本执行沙箱调用验证
-  await executeScriptWithBoa(code, { proxies: [], rules: [] }, 'default');
-
-  console.log('[fleet] Boa verification: PASSED');
-  return report;
+  await verifyScriptPipeline(code, 'Script failed Boa compatibility gate');
+  return { valid: true };
 }
 
 /**

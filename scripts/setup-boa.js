@@ -86,7 +86,10 @@ async function main() {
       );
     }
     console.log(`[setup-boa] Using BOA_PATH: ${process.env.BOA_PATH}`);
-    fs.copyFileSync(process.env.BOA_PATH, TARGET_BIN);
+    const resolvedSrc = path.resolve(process.env.BOA_PATH);
+    if (resolvedSrc !== TARGET_BIN) {
+      fs.copyFileSync(resolvedSrc, TARGET_BIN);
+    }
     fs.chmodSync(TARGET_BIN, 0o755);
     return;
   }

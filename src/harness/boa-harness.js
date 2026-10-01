@@ -26,7 +26,8 @@ export function findBoaBinary(customBoaPath) {
     return path.resolve(process.cwd(), customBoaPath);
   }
 
-  if (process.env.BOA_PATH && fs.existsSync(process.env.BOA_PATH)) {
+  // 若显式指定了 BOA_PATH，严格优先解析，不隐式降级（确保无效路径 Fail-Closed）
+  if (process.env.BOA_PATH) {
     return path.resolve(process.env.BOA_PATH);
   }
 
@@ -117,6 +118,20 @@ async function withTempScript(prefix, content, executor) {
 }
 
 /**
+ * 校验代码是否包含 CVR 源码静态 main 声明标记
+ *
+ * @param {string} code 待校验代码
+ * @returns {boolean} 是否包含 marker
+ */
+export function hasCvrStaticMarker(code) {
+  return (
+    code.includes('function main') ||
+    code.includes('const main') ||
+    code.includes('let main')
+  );
+}
+
+/**
  * 执行静态合规检查与 Boa 语法解析验证 (CVR Static Marker & Pure AST Syntax Gate)
  *
  * @param {string} code 待校验的脚本内容
@@ -130,10 +145,7 @@ export async function validateScript(code, options = {}) {
   const errors = [];
 
   // 1. CVR 源码静态 Marker 检查 (validate.rs)
-  const hasStaticMarker =
-    code.includes('function main') ||
-    code.includes('const main') ||
-    code.includes('let main');
+  const hasStaticMarker = hasCvrStaticMarker(code);
 
   if (!hasStaticMarker) {
     errors.push("Script must contain CVR static main marker ('function main', 'const main', or 'let main')");
