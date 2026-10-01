@@ -1,0 +1,99 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { rollup } from 'rollup';
+
+/**
+ * 剥离代码中的 ES Module 导出声明，使其退化为原生顶层声明
+ *
+ * @param {string} code 源代码
+ * @returns {string} 剥离 export 后的脚本内容
+ */
+export function stripModuleExports(code) {
+  let cleaned = code;
+
+  // 1. 移除具名导出块: export { a, b as c };
+  cleaned = cleaned.replace(/^\s*export\s*\{[\s\S]*?\};?\s*$/gm, '');
+
+  // 2. 剥离直接导出声明: export function / export const / export let / export var / export class
+  cleaned = cleaned.replace(/^\s*export\s+(async\s+function|function|const|let|var|class)\b/gm, '$1');
+
+  // 3. 移除 export default 声明
+  cleaned = cleaned.replace(/^\s*export\s+default\s+/gm, '');
+
+  // 整理连续空行并保留末尾单换行
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim() + '\n';
+
+  return cleaned;
+}
+
+/**
+ * 使用 Rollup 进行 Scope-Hoisted 扁平化打包，生成兼容 Boa 0.22 的单一脚本
+ *
+ * @param {object} options 构建选项
+ * @param {string} options.input 入口文件绝对路径或相对路径
+ * @param {string} options.output 目标产物路径
+ * @param {string} [options.banner] 自定义头部注释
+ * @returns {Promise<{ code: string, outputPath: string, hash: string }>} 构建结果
+ */
+export async function buildFlatScript({ input, output, banner }) {
+  const resolvedInput = path.resolve(process.cwd(), input);
+  const resolvedOutput = path.resolve(process.cwd(), output);
+
+  if (!fs.existsSync(resolvedInput)) {
+    throw new Error(`Entry file not found: ${resolvedInput}`);
+  }
+
+  const bundle = await rollup({
+    input: resolvedInput,
+    treeshake: {
+      moduleSideEffects: 'no-external',
+      propertyReadSideEffects: true,
+      tryCatchDeoptimization: false,
+    },
+    onwarn(warning, defaultHandler) {
+      // 模块同名变量被 Rollup 重命名属于符合预期的正常行为，忽略冲突提醒
+      if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+      defaultHandler(warning);
+    },
+  });
+
+  const { output: outputChunks } = await bundle.generate({
+    format: 'es',
+    generatedCode: {
+      preset: 'es2015',
+    },
+    compact: false,
+  });
+
+  await bundle.close();
+
+  if (!outputChunks || outputChunks.length === 0) {
+    throw new Error('Rollup produced no output chunks');
+  }
+
+  const rawChunk = outputChunks[0];
+  const strippedCode = stripModuleExports(rawChunk.code);
+
+  const finalBanner = banner
+    ? `${banner.trim()}\n\n`
+    : '// Clash Fleet generated Script.js - Deterministic Flat Build\n\n';
+
+  const finalCode = `${finalBanner}${strippedCode}`;
+
+  // 确保输出目录存在
+  const outputDir = path.dirname(resolvedOutput);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  fs.writeFileSync(resolvedOutput, finalCode, 'utf8');
+
+  const hash = crypto.createHash('sha256').update(finalCode).digest('hex');
+
+  return {
+    code: finalCode,
+    outputPath: resolvedOutput,
+    hash,
+  };
+}

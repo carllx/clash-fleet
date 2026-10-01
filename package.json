@@ -1,0 +1,24 @@
+{
+  "name": "clash-fleet",
+  "version": "0.1.0",
+  "description": "Multi-device configuration, deployment and diagnostics toolchain for Clash Verge Rev / Mihomo",
+  "type": "module",
+  "bin": {
+    "fleet": "./bin/fleet.js"
+  },
+  "scripts": {
+    "build": "node ./bin/fleet.js build",
+    "test": "node --test test/**/*.test.js"
+  },
+  "keywords": [
+    "clash",
+    "clash-verge-rev",
+    "mihomo",
+    "boa-engine"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "rollup": "^4.22.4"
+  }
+}
