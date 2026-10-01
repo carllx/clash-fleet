@@ -46,15 +46,18 @@ export function findBoaBinary(customBoaPath) {
 }
 
 /**
- * 获取 Boa 引擎版本信息
+ * 严格校验输出是否精确等于 "boa 0.22.0"
  *
- * @param {string} [customBoaPath] 自定义 boa 可执行路径
- * @returns {Promise<string>} 版本输出字符串
+ * 遵循严格规范要求：
+ * - 规范化输入并执行 trim()
+ * - 完全等值比对，拒绝任何非常规后缀（如 -dev、unexpected-suffix、(rev 123) 等）
+ *
+ * @param {string} rawStdout 引擎 --version 原始标准输出
+ * @returns {boolean} 是否完全精确匹配
  */
-export async function getBoaVersion(customBoaPath) {
-  const bin = findBoaBinary(customBoaPath);
-  const { stdout } = await execFileAsync(bin, ['--version']);
-  return stdout.trim();
+export function isExactBoaVersion(rawStdout) {
+  if (typeof rawStdout !== 'string') return false;
+  return rawStdout.trim().toLowerCase() === 'boa 0.22.0';
 }
 
 /**
@@ -62,7 +65,7 @@ export async function getBoaVersion(customBoaPath) {
  *
  * 遵循严格 Fail-Closed 原则：
  * - 引擎缺失 -> 立即抛出异常阻断
- * - 版本不匹配（如 0.21 或 0.23） -> 立即抛出异常阻断
+ * - 版本不匹配（如 0.21 或 0.23 或带后缀版本） -> 立即抛出异常阻断
  * - 绝不允许 warning-and-continue 兜底绕过
  *
  * @param {string} [customBoaPath] 自定义 boa 可执行路径
@@ -83,9 +86,8 @@ export async function assertBoaCompatibilityEngine(customBoaPath) {
   }
 
   const version = stdout.trim();
-  const isExact022 = /^boa 0\.22\.0(\s|$)/i.test(version);
 
-  if (!isExact022) {
+  if (!isExactBoaVersion(version)) {
     throw new Error(
       `[fleet] Incompatible Boa engine: Expected exact "boa 0.22.0", found "${version}". ` +
       `Fail-closed compatibility gate rejected execution.`

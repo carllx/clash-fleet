@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import {
   validateScript,
   executeScriptWithBoa,
-  getBoaVersion,
   assertBoaCompatibilityEngine,
+  isExactBoaVersion,
 } from '../src/harness/boa-harness.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -16,9 +16,45 @@ const INVALID_SYNTAX_FILE = path.resolve(__dirname, 'fixtures/invalid-syntax.js'
 const MISSING_MAIN_FILE = path.resolve(__dirname, 'fixtures/missing-main.js');
 
 test('Boa 0.22 compatibility gate and CVR harness', async (t) => {
+  await t.test('isExactBoaVersion strictly validates version equality and rejects suffixes', () => {
+    // 必须通过
+    assert.equal(isExactBoaVersion('boa 0.22.0'), true);
+    assert.equal(isExactBoaVersion('  boa 0.22.0\n'), true);
+    assert.equal(isExactBoaVersion('BOA 0.22.0'), true);
+
+    // 必须拒绝带有任何后缀或不同版本的情况
+    assert.equal(isExactBoaVersion('boa 0.23.0'), false);
+    assert.equal(isExactBoaVersion('boa 0.22.0-dev'), false);
+    assert.equal(isExactBoaVersion('boa 0.22.0 unexpected-suffix'), false);
+    assert.equal(isExactBoaVersion('boa 0.22.0 (rev 123)'), false);
+    assert.equal(isExactBoaVersion(''), false);
+    assert.equal(isExactBoaVersion(null), false);
+  });
+
   await t.test('detects and asserts exact boa 0.22.0 binary', async () => {
     const { version } = await assertBoaCompatibilityEngine();
-    assert.match(version, /^boa 0\.22\.0/, `Expected boa 0.22.0, got "${version}"`);
+    assert.equal(isExactBoaVersion(version), true, `Expected exact boa 0.22.0, got "${version}"`);
+  });
+
+  await t.test('assertBoaCompatibilityEngine rejects versions with suffixes (e.g. -dev, (rev 123))', async () => {
+    const fakeBoaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-boa-suffix-'));
+    const fakeBoa = path.join(fakeBoaDir, 'boa');
+    fs.writeFileSync(
+      fakeBoa,
+      '#!/bin/sh\necho "boa 0.22.0-dev"\n',
+      { mode: 0o755 }
+    );
+
+    try {
+      await assert.rejects(
+        async () => {
+          await assertBoaCompatibilityEngine(fakeBoa);
+        },
+        /Incompatible Boa engine: Expected exact "boa 0\.22\.0", found "boa 0\.22\.0-dev"/i
+      );
+    } finally {
+      fs.rmSync(fakeBoaDir, { recursive: true, force: true });
+    }
   });
 
   await t.test('assertBoaCompatibilityEngine fails closed on missing binary', async () => {
