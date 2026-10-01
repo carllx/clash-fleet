@@ -35,13 +35,17 @@ export function injectSniffer(config) {
   var existingSniffer = config.sniffer || {};
   var existingSniff = existingSniffer.sniff || {};
 
+  var mergedSniff = {};
+  for (var sniffKey in existingSniff) {
+    mergedSniff[sniffKey] = existingSniff[sniffKey];
+  }
+  mergedSniff.TLS = existingSniff.TLS || DEFAULT_SNIFFER_CONFIG.sniff.TLS;
+  mergedSniff.HTTP = existingSniff.HTTP || DEFAULT_SNIFFER_CONFIG.sniff.HTTP;
+
   config.sniffer = {
     enable: true,
     'parse-pure-ip': true,
-    sniff: {
-      TLS: existingSniff.TLS || DEFAULT_SNIFFER_CONFIG.sniff.TLS,
-      HTTP: existingSniff.HTTP || DEFAULT_SNIFFER_CONFIG.sniff.HTTP,
-    },
+    sniff: mergedSniff,
   };
 
   // 保留用户或配置原有的其他合法 sniffer 选项 (如 force-dns-mapping, override-destination 等)

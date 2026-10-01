@@ -22,6 +22,9 @@ describe('Modular assembly engine suite (Pure JS)', () => {
       const config = {
         sniffer: {
           'force-dns-mapping': true,
+          sniff: {
+            QUIC: { ports: [443] },
+          },
         },
       };
       const result = injectSniffer(config);
@@ -29,6 +32,9 @@ describe('Modular assembly engine suite (Pure JS)', () => {
       assert.strictEqual(result.sniffer.enable, true);
       assert.strictEqual(result.sniffer['parse-pure-ip'], true);
       assert.strictEqual(result.sniffer['force-dns-mapping'], true);
+      assert.deepStrictEqual(result.sniffer.sniff.QUIC, { ports: [443] });
+      assert.deepStrictEqual(result.sniffer.sniff.TLS.ports, [443, 8443]);
+      assert.deepStrictEqual(result.sniffer.sniff.HTTP.ports, [80, '8080-8880']);
     });
 
     it('does not touch CVR authoritative fields like tun, dns, or port', () => {

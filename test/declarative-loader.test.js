@@ -12,7 +12,7 @@ describe('Declarative data loader suite (Build-time only)', () => {
 
   it('loads direct.yaml and parses explicit rule declarations', () => {
     const directPath = path.join(rootDir, 'src/rules/direct.yaml');
-    const directRules = loadRulesFile(directPath, 'DIRECT');
+    const directRules = loadRulesFile(directPath);
 
     assert.ok(Array.isArray(directRules), 'directRules must be an array');
     assert.ok(directRules.length >= 2, 'directRules should have entries');
@@ -28,7 +28,7 @@ describe('Declarative data loader suite (Build-time only)', () => {
 
   it('loads reject.yaml and parses reject rule declarations', () => {
     const rejectPath = path.join(rootDir, 'src/rules/reject.yaml');
-    const rejectRules = loadRulesFile(rejectPath, 'REJECT');
+    const rejectRules = loadRulesFile(rejectPath);
 
     assert.ok(Array.isArray(rejectRules), 'rejectRules must be an array');
     assert.ok(
@@ -63,7 +63,7 @@ describe('Declarative data loader suite (Build-time only)', () => {
 
   it('fails closed on non-existent file or invalid schema', () => {
     assert.throws(
-      () => loadRulesFile(path.join(rootDir, 'src/rules/non-existent.yaml'), 'DIRECT'),
+      () => loadRulesFile(path.join(rootDir, 'src/rules/non-existent.yaml')),
       /File not found/
     );
   });

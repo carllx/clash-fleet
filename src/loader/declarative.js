@@ -12,10 +12,10 @@ import YAML from 'yaml';
  * 加载并校验声明式规则文件
  *
  * @param {string} filePath 规则文件绝对路径
- * @param {string} [defaultAction] 当规则未指定动作时的默认动作 (如 DIRECT 或 REJECT)
+ * @param {string} filePath 规则文件绝对路径
  * @returns {string[]} 标准化后的规则字符串数组
  */
-export function loadRulesFile(filePath, defaultAction) {
+export function loadRulesFile(filePath) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
@@ -35,13 +35,6 @@ export function loadRulesFile(filePath, defaultAction) {
     if (!trimmed) {
       throw new Error(`Empty rule entry in ${filePath}`);
     }
-
-    // 若规则未指定动作且提供了 defaultAction，则自动补齐
-    const parts = trimmed.split(',');
-    if (parts.length < 3 && defaultAction && !trimmed.startsWith('MATCH')) {
-      return `${trimmed},${defaultAction}`;
-    }
-
     return trimmed;
   });
 }
@@ -92,8 +85,8 @@ export function loadAllDeclarativeSources({ rootDir }) {
   const regionsPath = path.join(rootDir, 'presets/regions.yaml');
 
   return {
-    directRules: loadRulesFile(directPath, 'DIRECT'),
-    rejectRules: loadRulesFile(rejectPath, 'REJECT'),
+    directRules: loadRulesFile(directPath),
+    rejectRules: loadRulesFile(rejectPath),
     regions: loadRegionsFile(regionsPath),
   };
 }

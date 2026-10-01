@@ -22,9 +22,9 @@ export function rollupYamlPlugin() {
 
       var parsedData;
       if (id.endsWith('direct.yaml') || id.endsWith('direct.yml')) {
-        parsedData = loadRulesFile(id, 'DIRECT');
+        parsedData = loadRulesFile(id);
       } else if (id.endsWith('reject.yaml') || id.endsWith('reject.yml')) {
-        parsedData = loadRulesFile(id, 'REJECT');
+        parsedData = loadRulesFile(id);
       } else if (id.endsWith('regions.yaml') || id.endsWith('regions.yml')) {
         parsedData = loadRegionsFile(id);
       } else {
