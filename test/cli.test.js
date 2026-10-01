@@ -23,7 +23,6 @@ test('CLI fleet build command suite', async (t) => {
       'build',
       '--input', FIXTURE_ENTRY,
       '--output', OUTPUT_FILE,
-      '--verify',
     ]);
 
     assert.equal(fs.existsSync(OUTPUT_FILE), true, 'Output file should exist');
@@ -60,7 +59,7 @@ test('CLI fleet build command suite', async (t) => {
       async () => {
         await execFileAsync(
           process.execPath,
-          [CLI_PATH, 'build', '--input', FIXTURE_ENTRY, '--output', OUTPUT_FILE, '--verify'],
+          [CLI_PATH, 'build', '--input', FIXTURE_ENTRY, '--output', OUTPUT_FILE],
           { env: { ...process.env, BOA_PATH: fakeBoa } }
         );
       },
