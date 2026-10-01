@@ -1,0 +1,9 @@
+# 自定义直连规则清单 (Sanitized public declarations)
+# 条目采用标准 Clash/Mihomo 规则字符串格式
+rules:
+  - "IP-CIDR,198.18.0.1/32,DIRECT"
+  - "IP-CIDR,10.0.0.0/8,DIRECT"
+  - "IP-CIDR,172.16.0.0/12,DIRECT"
+  - "IP-CIDR,192.168.0.0/16,DIRECT"
+  - "DOMAIN-SUFFIX,local,DIRECT"
+  - "DOMAIN-SUFFIX,internal,DIRECT"

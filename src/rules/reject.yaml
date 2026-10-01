@@ -1,0 +1,6 @@
+# 自定义拦截规则清单 (Sanitized public declarations)
+# 拦截规则优先于自定义直连规则生效，防止广告绕过
+rules:
+  - "RULE-SET,reject,REJECT"
+  - "DOMAIN-SUFFIX,ads.example.com,REJECT"
+  - "DOMAIN-KEYWORD,adservice,REJECT"

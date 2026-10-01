@@ -1,0 +1,27 @@
+# 物理地区匹配字典与正则别名 (Region Presets)
+# 供未来 Issue #3 代理节点归类引擎编译消费
+regions:
+  hk:
+    name: "香港"
+    emoji: "🇭🇰"
+    pattern: "(🇭🇰|香港|Hong\\s*Kong|HongKong|(^|[^a-zA-Z])HK([^a-zA-Z]|$))"
+  jp:
+    name: "日本"
+    emoji: "🇯🇵"
+    pattern: "(🇯🇵|日本|Japan|Tokyo|Osaka|Saitama|Nagoya|(^|[^a-zA-Z])(JP|JPN)([^a-zA-Z]|$))"
+  us:
+    name: "美国"
+    emoji: "🇺🇸"
+    pattern: "(🇺🇸|美国|United\\s*States|America|Los\\s*Angeles|San\\s*Jose|Silicon\\s*Valley|Portland|Seattle|New\\s*York|(^|[^a-zA-Z])(US|USA)([^a-zA-Z]|$))"
+  sg:
+    name: "新加坡"
+    emoji: "🇸🇬"
+    pattern: "(🇸🇬|新加坡|Singapore|狮城|(^|[^a-zA-Z])SG([^a-zA-Z]|$))"
+  uk:
+    name: "英国"
+    emoji: "🇬🇧"
+    pattern: "(🇬🇧|英国|United\\s*Kingdom|London|(^|[^a-zA-Z])(UK|GB)([^a-zA-Z]|$))"
+  tw:
+    name: "台湾"
+    emoji: "🇹🇼"
+    pattern: "(🇹🇼|台湾|Taiwan|Taipei|Taichung|(^|[^a-zA-Z])TW([^a-zA-Z]|$))"

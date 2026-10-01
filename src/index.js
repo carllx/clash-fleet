@@ -1,9 +1,23 @@
+import directRules from './rules/direct.yaml';
+import rejectRules from './rules/reject.yaml';
+import regions from './presets/regions.yaml';
+import { assembleConfig } from './engine/assembler.js';
+
 /**
  * Clash Fleet 主脚本入口 (Modular Entrypoint)
  *
- * 作为 Rollup Flat 打包的入口模块，该模块导出 CVR 规范的 main 函数。
- * 打包后自动剥离 export 声明，并在全局暴露原生顶层 function main(config, profileName)。
+ * 在构建期通过 Rollup Flat 打包，声明式 YAML 被内联为纯 JavaScript 数据，
+ * 最终剥离 export 声明并在全局暴露原生顶层 function main(config, profileName)。
  */
+
+/**
+ * 编译期内联的声明式数据资产
+ */
+const DECLARATIVE_DATA = {
+  directRules: directRules,
+  rejectRules: rejectRules,
+  regions: regions,
+};
 
 /**
  * Clash Verge Rev 扩展脚本主处理函数
@@ -13,6 +27,5 @@
  * @returns {object} 处理后的配置对象
  */
 export function main(config, profileName) {
-  config = config || {};
-  return config;
+  return assembleConfig(config, profileName, DECLARATIVE_DATA);
 }

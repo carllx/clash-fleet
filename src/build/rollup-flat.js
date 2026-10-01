@@ -3,6 +3,41 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { hasCvrStaticMarker } from '../harness/boa-harness.js';
 import { rollup } from 'rollup';
+import YAML from 'yaml';
+import { loadRulesFile, loadRegionsFile } from '../loader/declarative.js';
+
+/**
+ * Rollup 构建期 YAML 解析插件
+ *
+ * 在构建打包时将声明式 YAML 转换为纯 JavaScript 数据导出，
+ * 避免在运行时产生对 Node.js/文件系统/YAML 库的任何依赖。
+ */
+export function rollupYamlPlugin() {
+  return {
+    name: 'rollup-yaml-plugin',
+    transform(code, id) {
+      if (!id.endsWith('.yaml') && !id.endsWith('.yml')) {
+        return null;
+      }
+
+      var parsedData;
+      if (id.endsWith('direct.yaml') || id.endsWith('direct.yml')) {
+        parsedData = loadRulesFile(id, 'DIRECT');
+      } else if (id.endsWith('reject.yaml') || id.endsWith('reject.yml')) {
+        parsedData = loadRulesFile(id, 'REJECT');
+      } else if (id.endsWith('regions.yaml') || id.endsWith('regions.yml')) {
+        parsedData = loadRegionsFile(id);
+      } else {
+        parsedData = YAML.parse(code);
+      }
+
+      return {
+        code: `export default ${JSON.stringify(parsedData)};`,
+        map: { mappings: '' },
+      };
+    },
+  };
+}
 
 /**
  * 剥离代码中的 ES Module 导出声明，使其退化为原生顶层声明
@@ -47,6 +82,7 @@ export async function buildFlatScript({ input, output, banner }) {
 
   const bundle = await rollup({
     input: resolvedInput,
+    plugins: [rollupYamlPlugin()],
     treeshake: {
       moduleSideEffects: 'no-external',
       propertyReadSideEffects: true,
