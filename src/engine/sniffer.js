@@ -28,11 +28,14 @@ export const DEFAULT_SNIFFER_CONFIG = {
  * @returns {object} 注入后的配置对象
  */
 export function injectSniffer(config) {
-  if (!config || typeof config !== 'object') {
-    config = {};
+  var target = {};
+  if (config && typeof config === 'object') {
+    for (var prop in config) {
+      target[prop] = config[prop];
+    }
   }
 
-  var existingSniffer = config.sniffer || {};
+  var existingSniffer = target.sniffer || {};
   var existingSniff = existingSniffer.sniff || {};
 
   var mergedSniff = {};
@@ -42,7 +45,7 @@ export function injectSniffer(config) {
   mergedSniff.TLS = existingSniff.TLS || DEFAULT_SNIFFER_CONFIG.sniff.TLS;
   mergedSniff.HTTP = existingSniff.HTTP || DEFAULT_SNIFFER_CONFIG.sniff.HTTP;
 
-  config.sniffer = {
+  target.sniffer = {
     enable: true,
     'parse-pure-ip': true,
     sniff: mergedSniff,
@@ -51,9 +54,9 @@ export function injectSniffer(config) {
   // 保留用户或配置原有的其他合法 sniffer 选项 (如 force-dns-mapping, override-destination 等)
   for (var key in existingSniffer) {
     if (key !== 'enable' && key !== 'parse-pure-ip' && key !== 'sniff') {
-      config.sniffer[key] = existingSniffer[key];
+      target.sniffer[key] = existingSniffer[key];
     }
   }
 
-  return config;
+  return target;
 }

@@ -20,9 +20,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "rollup": "^4.22.4"
-  },
-  "dependencies": {
+    "rollup": "^4.22.4",
     "yaml": "^2.9.1"
   }
 }

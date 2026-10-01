@@ -10,7 +10,8 @@ describe('Modular assembly engine suite (Pure JS)', () => {
       const config = {};
       const result = injectSniffer(config);
 
-      assert.strictEqual(result, config, 'mutates or returns config');
+      assert.notStrictEqual(result, config, 'returns cloned config to preserve pure contract');
+      assert.strictEqual(config.sniffer, undefined, 'does not mutate original argument');
       assert.ok(result.sniffer, 'sniffer field must exist');
       assert.strictEqual(result.sniffer.enable, true);
       assert.strictEqual(result.sniffer['parse-pure-ip'], true);

@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { hasCvrStaticMarker } from '../harness/boa-harness.js';
 import { rollup } from 'rollup';
 import YAML from 'yaml';
-import { loadRulesFile, loadRegionsFile } from '../loader/declarative.js';
+import { parseRulesYaml, parseRegionsYaml } from '../loader/declarative.js';
 
 /**
  * Rollup 构建期 YAML 解析插件
@@ -22,9 +22,9 @@ export function rollupYamlPlugin() {
 
       var parsedData;
       if (/(direct|reject)\.(yaml|yml)$/.test(id)) {
-        parsedData = loadRulesFile(id);
+        parsedData = parseRulesYaml(code, id);
       } else if (id.endsWith('regions.yaml') || id.endsWith('regions.yml')) {
-        parsedData = loadRegionsFile(id);
+        parsedData = parseRegionsYaml(code, id);
       } else {
         parsedData = YAML.parse(code);
       }

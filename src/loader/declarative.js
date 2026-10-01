@@ -9,51 +9,57 @@ import YAML from 'yaml';
  */
 
 /**
- * 加载并校验声明式规则文件
+ * 安全读取并解析 YAML 文件
  *
- * @param {string} filePath 规则文件绝对路径
- * @returns {string[]} 标准化后的规则字符串数组
+ * @param {string} filePath 文件路径
+ * @returns {any} 解析后的数据对象
  */
-export function loadRulesFile(filePath) {
+function readYamlFile(filePath) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
-
   const content = fs.readFileSync(filePath, 'utf8');
-  const parsed = YAML.parse(content);
+  return YAML.parse(content);
+}
+
+/**
+ * 解析并校验声明式规则 YAML 内容
+ *
+ * @param {string|object} content YAML 字符串或已解析对象
+ * @param {string} [sourceId] 数据来源标识 (供报错提示)
+ * @returns {string[]} 标准化后的规则字符串数组
+ */
+export function parseRulesYaml(content, sourceId = 'rules') {
+  const parsed = typeof content === 'string' ? YAML.parse(content) : content;
 
   if (!parsed || !Array.isArray(parsed.rules)) {
-    throw new Error(`Invalid rules schema in ${filePath}: expected top-level 'rules' array`);
+    throw new Error(`Invalid rules schema in ${sourceId}: expected top-level 'rules' array`);
   }
 
   return parsed.rules.map((rule) => {
     if (typeof rule !== 'string') {
-      throw new Error(`Rule item must be a string, got ${typeof rule} in ${filePath}`);
+      throw new Error(`Rule item must be a string, got ${typeof rule} in ${sourceId}`);
     }
     const trimmed = rule.trim();
     if (!trimmed) {
-      throw new Error(`Empty rule entry in ${filePath}`);
+      throw new Error(`Empty rule entry in ${sourceId}`);
     }
     return trimmed;
   });
 }
 
 /**
- * 加载并校验地区预设文件
+ * 解析并校验地区预设 YAML 内容
  *
- * @param {string} filePath 地区预设文件绝对路径
+ * @param {string|object} content YAML 字符串或已解析对象
+ * @param {string} [sourceId] 数据来源标识 (供报错提示)
  * @returns {Record<string, { name: string, emoji?: string, pattern: string }>} 地区字典
  */
-export function loadRegionsFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`File not found: ${filePath}`);
-  }
-
-  const content = fs.readFileSync(filePath, 'utf8');
-  const parsed = YAML.parse(content);
+export function parseRegionsYaml(content, sourceId = 'regions') {
+  const parsed = typeof content === 'string' ? YAML.parse(content) : content;
 
   if (!parsed || typeof parsed.regions !== 'object' || parsed.regions === null) {
-    throw new Error(`Invalid regions schema in ${filePath}: expected top-level 'regions' map`);
+    throw new Error(`Invalid regions schema in ${sourceId}: expected top-level 'regions' map`);
   }
 
   const validatedRegions = {};
@@ -69,6 +75,28 @@ export function loadRegionsFile(filePath) {
   }
 
   return validatedRegions;
+}
+
+/**
+ * 从文件加载并校验声明式规则
+ *
+ * @param {string} filePath 规则文件绝对路径
+ * @returns {string[]} 标准化后的规则字符串数组
+ */
+export function loadRulesFile(filePath) {
+  const parsed = readYamlFile(filePath);
+  return parseRulesYaml(parsed, filePath);
+}
+
+/**
+ * 从文件加载并校验地区预设
+ *
+ * @param {string} filePath 地区预设文件绝对路径
+ * @returns {Record<string, { name: string, emoji?: string, pattern: string }>} 地区字典
+ */
+export function loadRegionsFile(filePath) {
+  const parsed = readYamlFile(filePath);
+  return parseRegionsYaml(parsed, filePath);
 }
 
 /**
