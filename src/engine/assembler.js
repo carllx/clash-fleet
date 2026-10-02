@@ -7,7 +7,8 @@ import { assembleTopology } from './topology.js';
  * 模块化配置装配核心引擎
  *
  * 接收原始订阅配置与构建期编译注入的声明式数据，
- * 纯函数执行配置增强并返回最终配置对象。
+ * 纯函数执行配置增强并返回全新的配置对象 (Non-destructive / Copy-on-Write)，
+ * 严格保证调用方传入的原始配置对象不受任何原地修改。
  *
  * 执行流水线：
  * config.proxies
@@ -24,16 +25,20 @@ import { assembleTopology } from './topology.js';
  * @param {object|null|undefined} config 原始配置对象
  * @param {string} profileName 配置文件名称
  * @param {object} declarativeData 声明式数据资产 (含 directRules, rejectRules, regions 等)
- * @returns {object} 装配增强后的配置对象
+ * @returns {object} 装配增强后的全新配置对象
  */
 export function assembleConfig(config, profileName, declarativeData) {
-  if (!config || typeof config !== 'object') {
-    config = {};
+  var working = {};
+  if (config && typeof config === 'object') {
+    var keys = Object.keys(config);
+    for (var i = 0; i < keys.length; i++) {
+      working[keys[i]] = config[keys[i]];
+    }
   }
 
   // 1. 保守语义等价去重 (守卫原始 proxy.name 与既有策略组引用完整性)
-  if (Array.isArray(config.proxies)) {
-    config.proxies = deduplicateProxies(config.proxies, config['proxy-groups']);
+  if (Array.isArray(working.proxies)) {
+    working.proxies = deduplicateProxies(working.proxies, working['proxy-groups']);
   }
 
   // 2. 提取地区声明字典
@@ -48,15 +53,15 @@ export function assembleConfig(config, profileName, declarativeData) {
 
   // 3. 装配三级分层策略组拓扑 (Tier 1 -> Tier 1.5 -> Tier 2)
   if (regionPresets) {
-    var rawProxies = Array.isArray(config.proxies) ? config.proxies : [];
-    config['proxy-groups'] = assembleTopology(rawProxies, regionPresets, config['proxy-groups']);
+    var rawProxies = Array.isArray(working.proxies) ? working.proxies : [];
+    working['proxy-groups'] = assembleTopology(rawProxies, regionPresets, working['proxy-groups']);
   }
 
   // 4. 注入 Sniffer 纯 IP 嗅探配置
-  config = injectSniffer(config);
+  working = injectSniffer(working);
 
   // 5. 组装确定性规则链
-  config.rules = assembleRules(config.rules, declarativeData);
+  working.rules = assembleRules(working.rules, declarativeData);
 
-  return config;
+  return working;
 }

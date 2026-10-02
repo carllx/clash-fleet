@@ -89,12 +89,12 @@ export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
     }
   }
 
-  // 2. 构建 Tier 1.5 调度优选层 (按需创建，严禁包含物理节点；采用 fallback 避免重复测速开销)
+  // 2. 构建 Tier 1.5 调度优选层 (按需创建：仅在有效地区池数量 >= 2 时创建，严禁单地区制造无意义调度组)
   var tier15Groups = [];
   var hasTier15 = false;
   var autoSelectGroupName = '🚀 自动优选';
 
-  if (validTier2Names.length > 0) {
+  if (validTier2Names.length >= 2) {
     // 硬性约束：Tier 1.5 仅包含有效的 Tier 2 组名
     var autoSelectProxies = [];
     for (var a = 0; a < validTier2Names.length; a++) {

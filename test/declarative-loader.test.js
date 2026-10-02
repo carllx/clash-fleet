@@ -6,6 +6,7 @@ import {
   loadRegionsFile,
   loadAllDeclarativeSources,
   parseRulesYaml,
+  parseRegionsYaml,
 } from '../src/loader/declarative.js';
 
 describe('Declarative data loader suite (Build-time only)', () => {
@@ -70,6 +71,18 @@ rules:
     assert.throws(
       () => parseRulesYaml('invalid: true', 'invalid-yaml'),
       /Invalid rules schema/
+    );
+
+    // 验证非法地区正则 fail closed
+    const invalidRegexYaml = `
+regions:
+  bad_region:
+    name: "错误地区"
+    pattern: "(unclosed_parenthesis["
+`;
+    assert.throws(
+      () => parseRegionsYaml(invalidRegexYaml, 'invalid-regex-fixture'),
+      /Invalid regex pattern in region 'bad_region'/
     );
   });
 });

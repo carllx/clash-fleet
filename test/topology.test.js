@@ -73,7 +73,7 @@ test('Policy topology assembly suite (Three-Tier Policy Topology)', async (t) =>
     }
   });
 
-  await t.test('collapses Tier 1.5 when zero valid Tier 2 regions exist', () => {
+  await t.test('demand-driven Tier 1.5: 0 regions collapses Tier 1.5 and Tier 1 falls back to DIRECT', () => {
     var proxies = [
       { name: 'Unmatched-Node-01', type: 'ss' },
     ];
@@ -84,9 +84,41 @@ test('Policy topology assembly suite (Three-Tier Policy Topology)', async (t) =>
 
     var tier1 = groups.find((g) => g.name === '🔰 节点选择');
     assert.ok(tier1, 'Tier 1 default group should still exist');
-    // Tier 1 此时不应有悬空引用
-    assert.ok(!tier1.proxies.includes('🚀 自动优选'));
-    assert.ok(!tier1.proxies.includes('🇭🇰 香港'));
+    assert.deepEqual(tier1.proxies, ['DIRECT'], 'Tier 1 must fall back to DIRECT only');
+  });
+
+  await t.test('demand-driven Tier 1.5: exactly 1 valid region PROVES 🚀 自动优选 is absent', () => {
+    var proxies = [
+      { name: '🇭🇰 HK-01', type: 'ss' },
+    ];
+
+    var groups = assembleTopology(proxies, regionPresets, []);
+    var tier15 = groups.find((g) => g.name === '🚀 自动优选');
+    assert.equal(tier15, undefined, '🚀 自动优选 MUST be absent when exactly 1 valid region exists');
+
+    var tier2HK = groups.find((g) => g.name === '🇭🇰 香港');
+    assert.ok(tier2HK, 'Tier 2 HK must exist');
+
+    var tier1 = groups.find((g) => g.name === '🔰 节点选择');
+    assert.ok(tier1);
+    assert.deepEqual(tier1.proxies, ['🇭🇰 香港', 'DIRECT'], 'Tier 1 directly references that single Tier 2 plus DIRECT');
+  });
+
+  await t.test('demand-driven Tier 1.5: 2+ valid regions creates Tier 1.5 referencing Tier 2 names only', () => {
+    var proxies = [
+      { name: '🇭🇰 HK-01', type: 'ss' },
+      { name: '🇯🇵 JP-01', type: 'ss' },
+    ];
+
+    var groups = assembleTopology(proxies, regionPresets, []);
+    var tier15 = groups.find((g) => g.name === '🚀 自动优选');
+    assert.ok(tier15, 'Tier 1.5 should exist when 2+ regions exist');
+    assert.equal(tier15.type, 'fallback');
+    assert.deepEqual(tier15.proxies, ['🇭🇰 香港', '🇯🇵 日本']);
+
+    var tier1 = groups.find((g) => g.name === '🔰 节点选择');
+    assert.ok(tier1);
+    assert.deepEqual(tier1.proxies, ['🚀 自动优选', '🇭🇰 香港', '🇯🇵 日本', 'DIRECT']);
   });
 
   await t.test('Tier 1 Business Intent references Tier 1.5 and Tier 2 without dangling references', () => {
@@ -108,7 +140,10 @@ test('Policy topology assembly suite (Three-Tier Policy Topology)', async (t) =>
   });
 
   await t.test('idempotency: multiple passes produce stable groups and preserve unrelated user groups with cleaned references', () => {
-    var proxies = [{ name: '🇭🇰 HK-01', type: 'ss' }];
+    var proxies = [
+      { name: '🇭🇰 HK-01', type: 'ss' },
+      { name: '🇯🇵 JP-01', type: 'ss' },
+    ];
     var userGroup = {
       name: 'My Custom Manual Group',
       type: 'select',

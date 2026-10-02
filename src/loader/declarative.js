@@ -67,6 +67,14 @@ export function parseRegionsYaml(content, sourceId = 'regions') {
     if (!region || typeof region.name !== 'string' || typeof region.pattern !== 'string') {
       throw new Error(`Region ${key} must include valid 'name' and 'pattern'`);
     }
+
+    // 校验 pattern 必须为合法正则表达式 (Fail-Closed)
+    try {
+      new RegExp(region.pattern);
+    } catch (err) {
+      throw new Error(`Invalid regex pattern in region '${key}' (${sourceId}): ${err.message}`);
+    }
+
     validatedRegions[key] = {
       name: region.name,
       emoji: region.emoji || '',

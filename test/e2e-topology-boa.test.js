@@ -135,12 +135,18 @@ test('Complex sanitized fixture end-to-end Boa 0.22 verification suite', async (
     rules: ['MATCH,Manual Existing Group'],
   };
 
+  const inputSnapshot = JSON.parse(JSON.stringify(initialConfig));
+
   // 3. 在真实 Boa 0.22 引擎中调用编译生成的单一 main(config, profileName)
   const result1 = await executeScriptWithBoa(
     scriptCode,
     initialConfig,
     'ComplexSanitizedProfile'
   );
+
+  await t.test('pure / non-destructive contract: initialConfig must not be mutated', () => {
+    assert.deepStrictEqual(initialConfig, inputSnapshot);
+  });
 
   await t.test('preserves original physical proxy.name values exactly', () => {
     const proxyNames = result1.proxies.map((p) => p.name);

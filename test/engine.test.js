@@ -129,5 +129,32 @@ describe('Modular assembly engine suite (Pure JS)', () => {
         'MATCH,PROXY',
       ]);
     });
+
+    it('assembleConfig must not mutate caller input (pure / non-destructive contract)', () => {
+      const input = {
+        port: 7890,
+        proxies: [
+          { name: 'HK-1', type: 'ss', server: '1.1.1.1', port: 8388, cipher: 'aes-128-gcm', password: 'pwd' },
+          { name: 'HK-1-dup', type: 'ss', server: '1.1.1.1', port: 8388, cipher: 'aes-128-gcm', password: 'pwd' },
+        ],
+        'proxy-groups': [{ name: 'UserGroup', type: 'select', proxies: ['DIRECT'] }],
+        rules: ['MATCH,UserGroup'],
+      };
+
+      const originalSnapshot = JSON.parse(JSON.stringify(input));
+      const result = assembleConfig(input, 'test-profile', declarativeData);
+
+      // 输入对象不可变性守卫
+      assert.deepStrictEqual(input, originalSnapshot, 'caller input must not be mutated');
+      assert.notStrictEqual(result, input, 'result must be a new enhanced config');
+
+      // 验证增强结果包含去重、拓扑组装并保留无关配置
+      assert.strictEqual(result.proxies.length, 1);
+      assert.strictEqual(result.proxies[0].name, 'HK-1');
+      assert.ok(Array.isArray(result['proxy-groups']));
+      assert.ok(result['proxy-groups'].some((g) => g.name === '🔰 节点选择'));
+      assert.ok(result['proxy-groups'].some((g) => g.name === 'UserGroup'));
+      assert.strictEqual(result.port, 7890);
+    });
   });
 });
