@@ -77,12 +77,6 @@ function isDeepEqual(valA, valB) {
 }
 
 /**
- * 保守断言两个物理代理节点是否具备完全相同的运行态语义 (除 name 外)
- *
- * @param {object} proxyA 第一个节点对象
- * @param {object} proxyB 第二个节点对象
- * @returns {boolean} 是否完全等价
-/**
  * 辅助函数：收集对象中除 'name' 外的所有自有属性键
  *
  * @param {object} obj 目标对象
