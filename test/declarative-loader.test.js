@@ -60,6 +60,8 @@ rules:
     assert.ok(Array.isArray(sources.directRules));
     assert.ok(Array.isArray(sources.rejectRules));
     assert.ok(sources.regions.hk);
+    assert.ok(Array.isArray(sources.ruleProviders));
+    assert.strictEqual(sources.ruleProviders.length, 0, 'canonical rule-providers.yaml must be policy-neutral');
   });
 
   it('fails closed on non-existent file or invalid schema', () => {

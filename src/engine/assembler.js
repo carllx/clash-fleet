@@ -63,5 +63,32 @@ export function assembleConfig(config, profileName, declarativeData) {
   // 5. 组装确定性规则链
   working.rules = assembleRules(working.rules, declarativeData);
 
+  // 6. 挂载 Rule Providers (仅当声明式配置存在且非空时挂载，且绝不引入悬空 RULE-SET)
+  if (declarativeData && Array.isArray(declarativeData.ruleProviders) && declarativeData.ruleProviders.length > 0) {
+    var existingProviders = {};
+    if (working['rule-providers'] && typeof working['rule-providers'] === 'object') {
+      var pKeys = Object.keys(working['rule-providers']);
+      for (var k = 0; k < pKeys.length; k++) {
+        existingProviders[pKeys[k]] = working['rule-providers'][pKeys[k]];
+      }
+    }
+    for (var j = 0; j < declarativeData.ruleProviders.length; j++) {
+      var p = declarativeData.ruleProviders[j];
+      var providerDef = {
+        type: 'http',
+        behavior: p.behavior,
+        url: p.url,
+        path: p.path,
+        format: p.format,
+      };
+      if (typeof p.interval === 'number') {
+        providerDef.interval = p.interval;
+      }
+      existingProviders[p.id] = providerDef;
+    }
+    working['rule-providers'] = existingProviders;
+  }
+
   return working;
 }
+

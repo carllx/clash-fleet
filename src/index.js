@@ -1,6 +1,7 @@
 import directRules from './rules/direct.yaml';
 import rejectRules from './rules/reject.yaml';
 import regions from './presets/regions.yaml';
+import ruleProviders from './providers/rule-providers.yaml';
 import { assembleConfig } from './engine/assembler.js';
 
 /**
@@ -17,6 +18,7 @@ const DECLARATIVE_DATA = {
   directRules: directRules,
   rejectRules: rejectRules,
   regions: regions,
+  ruleProviders: ruleProviders,
 };
 
 /**

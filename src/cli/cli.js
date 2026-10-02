@@ -1,11 +1,17 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { buildFlatScript } from '../build/rollup-flat.js';
 import {
   validateScript,
   executeScriptWithBoa,
   assertBoaCompatibilityEngine,
 } from '../harness/boa-harness.js';
+import {
+  loadRuleProvidersFile,
+  generateProvenanceManifest,
+  serializeProvenanceManifest,
+} from '../loader/rule-providers.js';
 
 /**
  * 打印命令行帮助说明
@@ -18,19 +24,21 @@ Clash Fleet CLI - 多设备配置分发与确定性构建工具链
   fleet <command> [options]
 
 命令:
-  build      打包模块化 JavaScript 源码为 CVR 兼容的单一 Script.js (强制执行 Boa 0.22 门禁)
-  verify     使用 Boa 0.22 门禁验证目标 Script.js 的语法与契约
+    build      打包模块化 JavaScript 源码为 CVR 兼容的单一 Script.js 并生成 Rule Asset Provenance 清单 (强制执行 Boa 0.22 门禁)
+    verify     使用 Boa 0.22 门禁验证目标 Script.js 的语法与契约
 
-选项 (build):
-  --input, -i    入口文件路径 (默认: src/index.js)
-  --output, -o   产物输出路径 (默认: dist/Script.js)
+  选项 (build):
+    --input, -i             入口文件路径 (默认: src/index.js)
+    --output, -o            产物输出路径 (默认: dist/Script.js)
+    --providers, -p         Rule Provider 声明式文件路径 (默认: src/providers/rule-providers.yaml)
+    --provenance-output     Provenance Manifest 输出路径 (默认: 与 output 同目录下的 RULE_ASSET_PROVENANCE.json)
 
-选项 (verify):
-  --input, -i    待验证脚本路径 (默认: dist/Script.js，亦支持位置参数传入)
+  选项 (verify):
+    --input, -i             待验证脚本路径 (默认: dist/Script.js，亦支持位置参数传入)
 
-通用选项:
-  --help, -h     查看帮助信息
-  --version, -V  查看版本信息
+  通用选项:
+    --help, -h              查看帮助信息
+    --version, -V           查看版本信息
 `);
 }
 
@@ -45,6 +53,8 @@ export function parseArgs(args) {
     command: args[0] || 'help',
     input: null,
     output: null,
+    providers: null,
+    provenanceOutput: null,
   };
 
   for (let i = 1; i < args.length; i++) {
@@ -53,6 +63,10 @@ export function parseArgs(args) {
       parsed.input = args[++i];
     } else if (arg === '--output' || arg === '-o') {
       parsed.output = args[++i];
+    } else if (arg === '--providers' || arg === '-p') {
+      parsed.providers = args[++i];
+    } else if (arg === '--provenance-output') {
+      parsed.provenanceOutput = args[++i];
     } else if (!arg.startsWith('-') && !parsed.input) {
       // 捕获首个位置参数 (例如: fleet verify dist/Script.js)
       parsed.input = arg;
@@ -99,7 +113,7 @@ async function verifyScriptPipeline(code, failSummary) {
 }
 
 /**
- * 执行 build 命令 (构建 + 强制 Fail-Closed 门禁校验)
+ * 执行 build 命令 (构建 + 生成 Rule Asset Provenance 清单 + 强制 Fail-Closed 门禁校验)
  *
  * @param {object} options 构建选项
  */
@@ -107,6 +121,36 @@ export async function runBuild(options) {
   const input = options.input || 'src/index.js';
   const output = options.output || 'dist/Script.js';
 
+  // 1. 确定并校验 Rule Provider 声明式来源
+  const resolvedProvidersPath = options.providers
+    ? path.resolve(process.cwd(), options.providers)
+    : path.resolve(process.cwd(), 'src/providers/rule-providers.yaml');
+
+  let providers = [];
+  if (fs.existsSync(resolvedProvidersPath)) {
+    providers = loadRuleProvidersFile(resolvedProvidersPath);
+  } else if (options.providers) {
+    throw new Error(`Specified providers file not found: ${resolvedProvidersPath}`);
+  }
+
+  // 2. 确定性生成 Rule Asset Provenance Manifest
+  const manifest = generateProvenanceManifest(providers);
+  const resolvedOutputPath = path.resolve(process.cwd(), output);
+  const resolvedProvenanceOutput = options.provenanceOutput
+    ? path.resolve(process.cwd(), options.provenanceOutput)
+    : path.join(path.dirname(resolvedOutputPath), 'RULE_ASSET_PROVENANCE.json');
+
+  const provenanceDir = path.dirname(resolvedProvenanceOutput);
+  if (!fs.existsSync(provenanceDir)) {
+    fs.mkdirSync(provenanceDir, { recursive: true });
+  }
+
+  const manifestJson = serializeProvenanceManifest(manifest);
+  fs.writeFileSync(resolvedProvenanceOutput, manifestJson, 'utf8');
+  const manifestHash = crypto.createHash('sha256').update(manifestJson).digest('hex');
+  console.log(`[fleet] Provenance manifest generated: ${resolvedProvenanceOutput} (Status: ${manifest.status}, SHA-256: ${manifestHash})`);
+
+  // 3. 构建单一 Flat Script.js
   console.log(`[fleet] Building flat script from ${input} -> ${output}...`);
 
   const buildResult = await buildFlatScript({
@@ -116,9 +160,15 @@ export async function runBuild(options) {
 
   console.log(`[fleet] Build complete: ${buildResult.outputPath} (SHA-256: ${buildResult.hash})`);
 
+  // 4. 强制执行 Boa 0.22 门禁
   await verifyScriptPipeline(buildResult.code, 'Boa verification gate rejected the built script');
 
-  return buildResult;
+  return {
+    ...buildResult,
+    manifest,
+    provenancePath: resolvedProvenanceOutput,
+    manifestHash,
+  };
 }
 
 /**

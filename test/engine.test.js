@@ -156,5 +156,38 @@ describe('Modular assembly engine suite (Pure JS)', () => {
       assert.ok(result['proxy-groups'].some((g) => g.name === 'UserGroup'));
       assert.strictEqual(result.port, 7890);
     });
+
+    it('safely mounts rule-providers when declared without introducing dangling RULE-SET', () => {
+      const declarativeWithProviders = {
+        ...declarativeData,
+        ruleProviders: [
+          {
+            id: 'test-direct-provider',
+            behavior: 'domain',
+            format: 'yaml',
+            path: './rule_providers/test-direct-provider.yaml',
+            url: 'https://example.com/direct.yaml',
+            interval: 86400,
+            source: { strategy: 'dynamic' },
+          },
+        ],
+      };
+
+      const input = { rules: ['MATCH,DIRECT'] };
+      const originalInput = JSON.parse(JSON.stringify(input));
+      const result = assembleConfig(input, 'test-profile', declarativeWithProviders);
+
+      assert.deepStrictEqual(input, originalInput, 'caller input must not be mutated');
+      assert.ok(result['rule-providers']);
+      assert.ok(result['rule-providers']['test-direct-provider']);
+      assert.equal(result['rule-providers']['test-direct-provider'].type, 'http');
+      assert.equal(result['rule-providers']['test-direct-provider'].behavior, 'domain');
+      assert.equal(result['rule-providers']['test-direct-provider'].url, 'https://example.com/direct.yaml');
+      assert.equal(result['rule-providers']['test-direct-provider'].interval, 86400);
+
+      // 验证未引入任何悬空的 RULE-SET 规则
+      const hasDanglingRuleSet = result.rules.some((r) => r.startsWith('RULE-SET,test-direct-provider'));
+      assert.strictEqual(hasDanglingRuleSet, false, 'must not introduce dangling RULE-SET references in Issue #4');
+    });
   });
 });

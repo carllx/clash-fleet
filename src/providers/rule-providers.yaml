@@ -1,0 +1,3 @@
+# 外部 Rule Provider 声明式清单 (Policy-neutral skeleton for Issue #4)
+# 生产规则源留待后续迁移，本骨架仅保留规范结构与版本溯源元数据
+providers: []

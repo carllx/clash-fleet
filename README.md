@@ -33,7 +33,7 @@ export BOA_PATH="/path/to/custom/boa"
 Clash Fleet 提供了原生 CLI 命令：
 
 ```bash
-# 构建 Script.js (默认自动开启 Boa 0.22 门禁)
+# 构建 Script.js 并生成 RULE_ASSET_PROVENANCE.json (默认自动开启 Boa 0.22 门禁)
 node bin/fleet.js build
 
 # 自定义入口与输出
@@ -42,3 +42,8 @@ node bin/fleet.js build --input src/index.js --output dist/Script.js
 # 单独对目标脚本执行 Boa 0.22 兼容性门禁校验
 node bin/fleet.js verify dist/Script.js
 ```
+
+## 声明式 Rule Provider 维护与版本溯源
+
+外部 Rule Provider 统一在 `src/providers/rule-providers.yaml` 声明。构建时会自动生成不可变性与回滚语义审计清单 `dist/RULE_ASSET_PROVENANCE.json`。详细配置规范详见 [Rule Provider 维护指南](docs/rule-providers-guide.md)。
+

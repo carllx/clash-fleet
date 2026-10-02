@@ -107,21 +107,40 @@ export function loadRegionsFile(filePath) {
   return parseRegionsYaml(parsed, filePath);
 }
 
+export {
+  parseRuleProvidersYaml,
+  loadRuleProvidersFile,
+  generateProvenanceManifest,
+  serializeProvenanceManifest,
+  STATUS_NO_EXTERNAL,
+  STATUS_FULLY_PINNED,
+  STATUS_CONTAINS_DYNAMIC,
+  CLASSIFICATION_PINNED,
+  CLASSIFICATION_DYNAMIC,
+  STRATEGY_PINNED,
+  STRATEGY_DYNAMIC,
+} from './rule-providers.js';
+
+import { loadRuleProvidersFile } from './rule-providers.js';
+
 /**
  * 一次性加载全部声明式源码数据
  *
  * @param {object} options 加载选项
  * @param {string} options.rootDir 源码根目录 (如 src)
- * @returns {{ directRules: string[], rejectRules: string[], regions: object }} 声明式数据包
+ * @returns {{ directRules: string[], rejectRules: string[], regions: object, ruleProviders: Array<object> }} 声明式数据包
  */
 export function loadAllDeclarativeSources({ rootDir }) {
   const directPath = path.join(rootDir, 'rules/direct.yaml');
   const rejectPath = path.join(rootDir, 'rules/reject.yaml');
   const regionsPath = path.join(rootDir, 'presets/regions.yaml');
+  const providersPath = path.join(rootDir, 'providers/rule-providers.yaml');
 
   return {
     directRules: loadRulesFile(directPath),
     rejectRules: loadRulesFile(rejectPath),
     regions: loadRegionsFile(regionsPath),
+    ruleProviders: fs.existsSync(providersPath) ? loadRuleProvidersFile(providersPath) : [],
   };
 }
+

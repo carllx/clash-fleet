@@ -26,6 +26,15 @@ _Avoid_: OS script, client app
 对 Fleet 所依赖外部规则数据集的来源、不可变修订或动态依赖属性的显式溯源定义。
 _Avoid_: Rule version, rule source
 
+**Pinned Rule Asset**:
+绑定不可变版本修订（Git Commit SHA 或固定 Release 资产）的外部规则集，具备确定性与可重现规则资产回滚语义。
+_Avoid_: Static rule, fixed provider
+
+**Dynamic External Dependency**:
+显式指向动态可变上游（如 HEAD 分支）的外部规则依赖，其回滚语义在清单中标记为局部/不可完全重现 (partial / non-fully-reproducible)。
+_Avoid_: Live rule, upstream sync
+
+
 ### 策略组拓扑 (Policy Topology)
 
 **Policy Topology**:
