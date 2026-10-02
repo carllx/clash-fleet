@@ -11,8 +11,12 @@ import { parseRulesYaml, parseRegionsYaml, parseRuleProvidersYaml } from '../loa
  *
  * 在构建打包时将声明式 YAML 转换为纯 JavaScript 数据导出，
  * 避免在运行时产生对 Node.js/文件系统/YAML 库的任何依赖。
+ *
+ * @param {object} [options] 插件选项
+ * @param {Array<object>} [options.validatedProviders] 当次构建已校验的权威 providers 数据 (保证单权威源)
  */
-export function rollupYamlPlugin() {
+export function rollupYamlPlugin(options = {}) {
+  const { validatedProviders } = options;
   return {
     name: 'rollup-yaml-plugin',
     transform(code, id) {
@@ -26,7 +30,10 @@ export function rollupYamlPlugin() {
       } else if (id.endsWith('regions.yaml') || id.endsWith('regions.yml')) {
         parsedData = parseRegionsYaml(code, id);
       } else if (id.endsWith('rule-providers.yaml') || id.endsWith('rule-providers.yml')) {
-        parsedData = parseRuleProvidersYaml(code, id);
+        // 单一权威源保证：若构建期传入了全局唯一校验的 providers 数据，直接使用该权威数据
+        parsedData = Array.isArray(validatedProviders)
+          ? validatedProviders
+          : parseRuleProvidersYaml(code, id);
       } else {
         parsedData = YAML.parse(code);
       }
@@ -70,9 +77,10 @@ export function stripModuleExports(code) {
  * @param {string} options.input 入口文件绝对路径或相对路径
  * @param {string} options.output 目标产物路径
  * @param {string} [options.banner] 自定义头部注释
+ * @param {Array<object>} [options.validatedProviders] 当次构建全局唯一的权威 providers 数据
  * @returns {Promise<{ code: string, outputPath: string, hash: string }>} 构建结果
  */
-export async function buildFlatScript({ input, output, banner }) {
+export async function buildFlatScript({ input, output, banner, validatedProviders }) {
   const resolvedInput = path.resolve(process.cwd(), input);
   const resolvedOutput = path.resolve(process.cwd(), output);
 
@@ -82,7 +90,7 @@ export async function buildFlatScript({ input, output, banner }) {
 
   const bundle = await rollup({
     input: resolvedInput,
-    plugins: [rollupYamlPlugin()],
+    plugins: [rollupYamlPlugin({ validatedProviders })],
     treeshake: {
       moduleSideEffects: 'no-external',
       propertyReadSideEffects: true,

@@ -20,22 +20,28 @@ describe('Rule Provider declarative schema & provenance suite', () => {
   });
 
   it('parses valid pinned provider and preserves immutable revision', () => {
+    const fullSha = 'a1b2c3d4e5f67890123456789abcdef012345678';
     const yaml = `
 providers:
   - id: test-pinned-provider
     behavior: domain
     format: yaml
-    url: "https://raw.githubusercontent.com/example/rules/abc1234/test.yaml"
+    url: "https://raw.githubusercontent.com/example/rules/${fullSha}/test.yaml"
     source:
       strategy: pinned
-      revision: "abc1234def5678"
+      revision:
+        kind: git-commit
+        value: "${fullSha}"
 `;
     const parsed = parseRuleProvidersYaml(yaml, 'pinned-test');
     assert.equal(parsed.length, 1);
     assert.equal(parsed[0].id, 'test-pinned-provider');
     assert.equal(parsed[0].behavior, 'domain');
     assert.equal(parsed[0].source.strategy, 'pinned');
-    assert.equal(parsed[0].source.revision, 'abc1234def5678');
+    assert.deepEqual(parsed[0].source.revision, {
+      kind: 'git-commit',
+      value: fullSha,
+    });
   });
 
   it('parses valid dynamic external dependency provider', () => {
@@ -63,14 +69,12 @@ providers:
     behavior: domain
     url: "https://example.com/rule1.yaml"
     source:
-      strategy: pinned
-      revision: "rev1"
+      strategy: dynamic
   - id: duplicate-id
     behavior: domain
     url: "https://example.com/rule2.yaml"
     source:
-      strategy: pinned
-      revision: "rev2"
+      strategy: dynamic
 `;
     assert.throws(
       () => parseRuleProvidersYaml(yaml, 'dup-test'),
@@ -122,6 +126,173 @@ providers:
       () => parseRuleProvidersYaml(yaml, 'empty-rev-test'),
       /Pinned provider 'test-pinned-empty-rev' must declare immutable 'revision'/
     );
+  });
+
+  it('fails closed when pinned provider specifies revision as main or master', () => {
+    const yaml = `
+providers:
+  - id: test-pinned-main
+    behavior: domain
+    url: "https://raw.githubusercontent.com/example/rules/main/test.yaml"
+    source:
+      strategy: pinned
+      revision: main
+`;
+    assert.throws(
+      () => parseRuleProvidersYaml(yaml, 'main-test'),
+      /cannot be a mutable branch or floating identifier/i
+    );
+  });
+
+  it('fails closed when pinned provider specifies revision as HEAD or latest', () => {
+    const yaml = `
+providers:
+  - id: test-pinned-head
+    behavior: domain
+    url: "https://raw.githubusercontent.com/example/rules/HEAD/test.yaml"
+    source:
+      strategy: pinned
+      revision:
+        kind: git-commit
+        value: HEAD
+`;
+    assert.throws(
+      () => parseRuleProvidersYaml(yaml, 'head-test'),
+      /cannot be a mutable branch or floating identifier/i
+    );
+  });
+
+  it('fails closed when pinned git-commit has short or malformed SHA', () => {
+    const yaml = `
+providers:
+  - id: test-pinned-short-sha
+    behavior: domain
+    url: "https://raw.githubusercontent.com/example/rules/abc1234/test.yaml"
+    source:
+      strategy: pinned
+      revision:
+        kind: git-commit
+        value: "abc1234"
+`;
+    assert.throws(
+      () => parseRuleProvidersYaml(yaml, 'short-sha-test'),
+      /requires a full 40-character commit SHA/i
+    );
+  });
+
+  it('fails closed when pinned metadata says commit SHA but effective runtime locator is mutable branch URL', () => {
+    const fullSha = '0123456789abcdef0123456789abcdef01234567';
+    const yaml = `
+providers:
+  - id: test-contradiction
+    behavior: domain
+    url: "https://raw.githubusercontent.com/example/rules/main/test.yaml"
+    source:
+      strategy: pinned
+      revision:
+        kind: git-commit
+        value: "${fullSha}"
+`;
+    assert.throws(
+      () => parseRuleProvidersYaml(yaml, 'contradiction-test'),
+      /Locator URL contradicts immutable pinned identity/i
+    );
+  });
+
+  it('fails closed when release download locator contains floating latest path', () => {
+    const yaml = `
+providers:
+  - id: test-floating-release
+    behavior: domain
+    url: "https://github.com/example/rules/releases/latest/download/rules.yaml"
+    source:
+      strategy: pinned
+      revision:
+        kind: release-asset
+        value: "v1.0.0"
+`;
+    assert.throws(
+      () => parseRuleProvidersYaml(yaml, 'floating-release-test'),
+      /Locator URL contradicts immutable pinned identity/i
+    );
+  });
+
+  it('fails closed when release-asset value is latest or floating branch', () => {
+    const yaml = `
+providers:
+  - id: test-bad-release-val
+    behavior: domain
+    url: "https://github.com/example/rules/releases/download/v1.0.0/rules.yaml"
+    source:
+      strategy: pinned
+      revision:
+        kind: release-asset
+        value: "latest"
+`;
+    assert.throws(
+      () => parseRuleProvidersYaml(yaml, 'bad-release-val'),
+      /cannot be a mutable branch or floating identifier/i
+    );
+  });
+
+  it('parses valid pinned git-commit provider with full SHA and matching locator', () => {
+    const fullSha = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+    const yaml = `
+providers:
+  - id: test-pinned-git
+    behavior: domain
+    format: yaml
+    url: "https://raw.githubusercontent.com/example/rules/${fullSha}/test.yaml"
+    source:
+      strategy: pinned
+      revision:
+        kind: git-commit
+        value: "${fullSha}"
+`;
+    const parsed = parseRuleProvidersYaml(yaml, 'git-test');
+    assert.equal(parsed.length, 1);
+    assert.equal(parsed[0].id, 'test-pinned-git');
+    assert.deepEqual(parsed[0].source.revision, {
+      kind: 'git-commit',
+      value: fullSha,
+    });
+  });
+
+  it('parses valid pinned release-asset provider with fixed version tag and matching locator', () => {
+    const yaml = `
+providers:
+  - id: test-pinned-release
+    behavior: domain
+    format: yaml
+    url: "https://github.com/example/rules/releases/download/v1.2.3/rules.yaml"
+    source:
+      strategy: pinned
+      revision:
+        kind: release-asset
+        value: "v1.2.3"
+`;
+    const parsed = parseRuleProvidersYaml(yaml, 'release-test');
+    assert.equal(parsed.length, 1);
+    assert.equal(parsed[0].id, 'test-pinned-release');
+    assert.deepEqual(parsed[0].source.revision, {
+      kind: 'release-asset',
+      value: 'v1.2.3',
+    });
+  });
+
+  it('parses valid dynamic main-branch provider with explicit partial rollback semantics', () => {
+    const yaml = `
+providers:
+  - id: test-dynamic-main
+    behavior: classical
+    url: "https://raw.githubusercontent.com/example/rules/main/rules.yaml"
+    source:
+      strategy: dynamic
+`;
+    const parsed = parseRuleProvidersYaml(yaml, 'dynamic-main-test');
+    assert.equal(parsed.length, 1);
+    assert.equal(parsed[0].id, 'test-dynamic-main');
+    assert.equal(parsed[0].source.strategy, 'dynamic');
   });
 
   it('fails closed on missing source URL', () => {
@@ -184,15 +355,21 @@ providers:
         id: 'z-provider',
         behavior: 'domain',
         format: 'yaml',
-        url: 'https://example.com/z.yaml',
-        source: { strategy: 'pinned', revision: 'sha-z' },
+        url: 'https://example.com/rules/z/v2.0.0/z.yaml',
+        source: {
+          strategy: 'pinned',
+          revision: { kind: 'release-asset', value: 'v2.0.0' },
+        },
       },
       {
         id: 'a-provider',
         behavior: 'ipcidr',
         format: 'yaml',
-        url: 'https://example.com/a.yaml',
-        source: { strategy: 'pinned', revision: 'sha-a' },
+        url: 'https://example.com/rules/a/0123456789abcdef0123456789abcdef01234567/a.yaml',
+        source: {
+          strategy: 'pinned',
+          revision: { kind: 'git-commit', value: '0123456789abcdef0123456789abcdef01234567' },
+        },
       },
     ];
 
@@ -205,11 +382,18 @@ providers:
     // 验证严格字典序
     assert.equal(manifest.providers[0].id, 'a-provider');
     assert.equal(manifest.providers[0].classification, CLASSIFICATION_PINNED);
-    assert.equal(manifest.providers[0].revision, 'sha-a');
+    assert.deepEqual(manifest.providers[0].revision, {
+      kind: 'git-commit',
+      value: '0123456789abcdef0123456789abcdef01234567',
+    });
     assert.equal(manifest.providers[0].rollback_semantics, ROLLBACK_SEMANTICS_PINNED);
 
     assert.equal(manifest.providers[1].id, 'z-provider');
     assert.equal(manifest.providers[1].classification, CLASSIFICATION_PINNED);
+    assert.deepEqual(manifest.providers[1].revision, {
+      kind: 'release-asset',
+      value: 'v2.0.0',
+    });
   });
 
   it('generates dynamic provenance manifest with explicit partial rollback semantics', () => {
@@ -226,8 +410,11 @@ providers:
         id: 'pin-provider',
         behavior: 'domain',
         format: 'yaml',
-        url: 'https://example.com/fixed.yaml',
-        source: { strategy: 'pinned', revision: 'v1.0.0' },
+        url: 'https://example.com/releases/download/v1.0.0/fixed.yaml',
+        source: {
+          strategy: 'pinned',
+          revision: { kind: 'release-asset', value: 'v1.0.0' },
+        },
       },
     ];
 

@@ -23,6 +23,108 @@ export const STRATEGY_DYNAMIC = 'dynamic';
 
 export const VALID_BEHAVIORS = Object.freeze(['domain', 'ipcidr', 'classical']);
 
+const MUTABLE_IDENTIFIERS = Object.freeze([
+  'main',
+  'master',
+  'head',
+  'latest',
+  'trunk',
+  'dev',
+  'develop',
+]);
+
+const GIT_SHA_REGEX = /^[0-9a-fA-F]{40}$/;
+const MUTABLE_BRANCH_PATH_REGEX = /(^|\/)(main|master|head)(\/|$)/i;
+const FLOATING_RELEASE_PATH_REGEX = /(latest\/download|releases\/latest)/i;
+
+/**
+ * 校验并标准化 Pinned Provider 的不可变版本修订标识及其与运行时 URL 的一致性
+ */
+function validatePinnedRevision(rawRevision, id, url, sourceId) {
+  if (!rawRevision) {
+    throw new Error(
+      `Pinned provider '${id}' must declare immutable 'revision' (e.g. commit SHA or fixed release tag) in ${sourceId}`
+    );
+  }
+
+  let kind;
+  let value;
+
+  if (typeof rawRevision === 'string') {
+    const trimmed = rawRevision.trim();
+    if (!trimmed) {
+      throw new Error(
+        `Pinned provider '${id}' must declare immutable 'revision' (e.g. commit SHA or fixed release tag) in ${sourceId}`
+      );
+    }
+    const lower = trimmed.toLowerCase();
+    if (MUTABLE_IDENTIFIERS.includes(lower)) {
+      throw new Error(
+        `Pinned provider '${id}' revision cannot be a mutable branch or floating identifier '${trimmed}' in ${sourceId}`
+      );
+    }
+    if (GIT_SHA_REGEX.test(trimmed)) {
+      kind = 'git-commit';
+      value = trimmed;
+    } else {
+      throw new Error(
+        `Pinned provider '${id}' string revision must be a full 40-character commit SHA or an explicit { kind, value } object, got '${trimmed}' in ${sourceId}`
+      );
+    }
+  } else if (typeof rawRevision === 'object' && rawRevision !== null) {
+    if (rawRevision.kind !== 'git-commit' && rawRevision.kind !== 'release-asset') {
+      throw new Error(
+        `Pinned provider '${id}' revision.kind must be 'git-commit' or 'release-asset', got '${rawRevision.kind}' in ${sourceId}`
+      );
+    }
+    if (typeof rawRevision.value !== 'string' || !rawRevision.value.trim()) {
+      throw new Error(
+        `Pinned provider '${id}' revision.value must be a non-empty string in ${sourceId}`
+      );
+    }
+    kind = rawRevision.kind;
+    value = rawRevision.value.trim();
+
+    const lower = value.toLowerCase();
+    if (MUTABLE_IDENTIFIERS.includes(lower)) {
+      throw new Error(
+        `Pinned provider '${id}' revision value cannot be a mutable branch or floating identifier '${value}' in ${sourceId}`
+      );
+    }
+
+    if (kind === 'git-commit' && !GIT_SHA_REGEX.test(value)) {
+      throw new Error(
+        `Pinned git-commit provider '${id}' requires a full 40-character commit SHA, got '${value}' in ${sourceId}`
+      );
+    }
+  } else {
+    throw new Error(
+      `Pinned provider '${id}' revision must be a string or { kind, value } object in ${sourceId}`
+    );
+  }
+
+  // 校验运行时 URL 与不可变修订的一致性 (Fail-closed consistency check)
+  if (MUTABLE_BRANCH_PATH_REGEX.test(url)) {
+    throw new Error(
+      `Locator URL contradicts immutable pinned identity in provider '${id}': contains mutable branch path in '${url}'`
+    );
+  }
+
+  if (FLOATING_RELEASE_PATH_REGEX.test(url)) {
+    throw new Error(
+      `Locator URL contradicts immutable pinned identity in provider '${id}': contains floating latest release locator in '${url}'`
+    );
+  }
+
+  if (!url.includes(value)) {
+    throw new Error(
+      `Locator URL contradicts immutable pinned identity in provider '${id}': URL does not reference declared revision '${value}'`
+    );
+  }
+
+  return { kind, value };
+}
+
 /**
  * 解析并校验 Rule Provider 声明式配置
  *
@@ -83,12 +185,7 @@ export function parseRuleProvidersYaml(content, sourceId = 'rule-providers') {
 
     let revision = null;
     if (strategy === STRATEGY_PINNED) {
-      if (typeof entry.source.revision !== 'string' || !entry.source.revision.trim()) {
-        throw new Error(
-          `Pinned provider '${id}' must declare immutable 'revision' (e.g. commit SHA or fixed release tag)`
-        );
-      }
-      revision = entry.source.revision.trim();
+      revision = validatePinnedRevision(entry.source.revision, id, url, sourceId);
     } else {
       // 动态依赖严禁虚假宣称完全可重现
       const source = entry.source;

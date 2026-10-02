@@ -150,12 +150,13 @@ export async function runBuild(options) {
   const manifestHash = crypto.createHash('sha256').update(manifestJson).digest('hex');
   console.log(`[fleet] Provenance manifest generated: ${resolvedProvenanceOutput} (Status: ${manifest.status}, SHA-256: ${manifestHash})`);
 
-  // 3. 构建单一 Flat Script.js
+  // 3. 构建单一 Flat Script.js (单一权威源：传入当次已校验的 providers)
   console.log(`[fleet] Building flat script from ${input} -> ${output}...`);
 
   const buildResult = await buildFlatScript({
     input,
     output,
+    validatedProviders: providers,
   });
 
   console.log(`[fleet] Build complete: ${buildResult.outputPath} (SHA-256: ${buildResult.hash})`);

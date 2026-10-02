@@ -23,8 +23,9 @@ providers:
     interval: 86400                # 刷新间隔秒数 (可选，dynamic 默认 86400)
     source:
       strategy: pinned | dynamic   # 来源权威策略 (必填: pinned 或 dynamic)
-      revision: "..."              # 不可变版本修订 (当 strategy 为 pinned 时必填，如 Git Commit SHA 或固定 Release 资产)
-```
+      revision:                    # 不可变版本修订 (当 strategy 为 pinned 时必填)
+        kind: git-commit | release-asset
+        value: "..."               # 40位 Git Commit SHA 或固定 Release 资产标签
 
 ## 来源策略分类 (Source Strategy)
 
@@ -32,7 +33,11 @@ providers:
 
 1. **固定不可变版本 (Pinned Rule Asset)**:
    - `strategy: pinned`
-   - 必须提供 `revision` 字段（如 40 位 Git Commit SHA 或固定版本号）；
+   - 必须提供显式类型的 `revision`:
+     - `kind: git-commit`，`value` 必须为完整 40 位不可变 Commit SHA，且 URL 必须引用该 SHA，严禁指向 `main`/`master` 等分支路径；
+     - `kind: release-asset`，`value` 为固定版本发布标识（如 `v1.2.3`），URL 严禁使用 `/latest/download/` 等浮动发布路径；
+   - 严禁使用 `main`, `master`, `HEAD`, `latest` 作为 pinned 版本；
+   - 运行时 URL 必须与不可变身份一致；
    - 在构建清单中标记为 `Pinned Rule Asset`，具备可精确回滚重现能力。
 
 2. **动态外部依赖 (Dynamic External Dependency)**:
