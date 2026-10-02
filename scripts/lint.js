@@ -62,8 +62,9 @@ function checkFilePatterns(filePath) {
   const issues = [];
   const content = fs.readFileSync(filePath, 'utf8');
   const relPath = path.relative(PROJECT_ROOT, filePath);
+  const relPathPosix = relPath.replace(/\\/g, '/');
 
-  if (IGNORED_FIXTURES.includes(relPath)) {
+  if (IGNORED_FIXTURES.includes(relPathPosix)) {
     return issues;
   }
 
