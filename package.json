@@ -11,7 +11,7 @@
     "lint": "node ./scripts/lint.js",
     "build": "node ./bin/fleet.js build",
     "package": "node ./bin/fleet.js package",
-    "test": "node --test 'test/**/*.test.js'",
+    "test": "node ./scripts/test-runner.js",
     "test:oracle": "FLEET_REQUIRE_LEGACY_ORACLE=1 node --test test/legacy-oracle-comparison.test.js"
   },
   "keywords": [
