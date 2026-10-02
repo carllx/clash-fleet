@@ -1,5 +1,9 @@
 import directRules from './rules/direct.yaml';
 import rejectRules from './rules/reject.yaml';
+import aiRules from './rules/ai-services.yaml';
+import mediaRules from './rules/media-services.yaml';
+import darwinRules from './rules/platforms/darwin.yaml';
+import win32Rules from './rules/platforms/win32.yaml';
 import regions from './presets/regions.yaml';
 import ruleProviders from './providers/rule-providers.yaml';
 import { assembleConfig } from './engine/assembler.js';
@@ -17,6 +21,10 @@ import { assembleConfig } from './engine/assembler.js';
 const DECLARATIVE_DATA = {
   directRules: directRules,
   rejectRules: rejectRules,
+  aiRules: aiRules,
+  mediaRules: mediaRules,
+  darwinRules: darwinRules,
+  win32Rules: win32Rules,
   regions: regions,
   ruleProviders: ruleProviders,
 };

@@ -1,0 +1,56 @@
+{
+  "proxies": [
+    {
+      "name": "🇭🇰 HK-Sanitized-01",
+      "type": "ss",
+      "server": "192.0.2.11",
+      "port": 8388,
+      "cipher": "aes-128-gcm",
+      "password": "sanitized-dummy-secret-1"
+    },
+    {
+      "name": "🇭🇰 HK-Sanitized-02",
+      "type": "ss",
+      "server": "192.0.2.12",
+      "port": 8388,
+      "cipher": "aes-128-gcm",
+      "password": "sanitized-dummy-secret-2"
+    },
+    {
+      "name": "🇯🇵 JP-Sanitized-01",
+      "type": "ss",
+      "server": "192.0.2.21",
+      "port": 8388,
+      "cipher": "aes-128-gcm",
+      "password": "sanitized-dummy-secret-3"
+    },
+    {
+      "name": "🇺🇸 US-Sanitized-01",
+      "type": "ss",
+      "server": "192.0.2.31",
+      "port": 8388,
+      "cipher": "aes-128-gcm",
+      "password": "sanitized-dummy-secret-4"
+    },
+    {
+      "name": "🇸🇬 SG-Sanitized-01",
+      "type": "ss",
+      "server": "192.0.2.41",
+      "port": 8388,
+      "cipher": "aes-128-gcm",
+      "password": "sanitized-dummy-secret-5"
+    }
+  ],
+  "proxy-groups": [
+    {
+      "name": "Existing-User-Group",
+      "type": "select",
+      "proxies": ["DIRECT", "🇭🇰 香港", "🇬🇧 英国"]
+    }
+  ],
+  "rules": [
+    "GEOIP,LAN,DIRECT",
+    "GEOIP,CN,DIRECT",
+    "MATCH,🔰 节点选择"
+  ]
+}

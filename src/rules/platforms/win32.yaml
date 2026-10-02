@@ -1,0 +1,15 @@
+# Windows 专有进程分流规则声明 (Win32 Process Rules)
+# 与 macOS 规则在构建期共同注入 Universal Script.js
+rules:
+  # 国内直连协作应用
+  - "PROCESS-NAME,DingTalk.exe,DIRECT"
+  - "PROCESS-NAME,SunloginClient.exe,DIRECT"
+
+  # Antigravity 开发者环境进程
+  - "PROCESS-NAME,Antigravity.exe,🤖 AI 服务"
+  - "PROCESS-NAME,Antigravity IDE.exe,🤖 AI 服务"
+  - "PROCESS-NAME,agy.exe,🤖 AI 服务"
+  - "PROCESS-NAME,language_server.exe,🤖 AI 服务"
+  - "PROCESS-NAME,language_server_windows_x64.exe,🤖 AI 服务"
+  - "PROCESS-NAME,language_server_windows_arm64.exe,🤖 AI 服务"
+  - "PROCESS-NAME,antigravity_tools.exe,🤖 AI 服务"

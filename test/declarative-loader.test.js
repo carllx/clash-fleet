@@ -12,7 +12,7 @@ import {
 describe('Declarative data loader suite (Build-time only)', () => {
   const rootDir = process.cwd();
 
-  it('loads canonical direct.yaml and reject.yaml as policy-neutral empty arrays', () => {
+  it('loads canonical direct.yaml and reject.yaml with expected schema', () => {
     const directPath = path.join(rootDir, 'src/rules/direct.yaml');
     const rejectPath = path.join(rootDir, 'src/rules/reject.yaml');
 
@@ -20,10 +20,10 @@ describe('Declarative data loader suite (Build-time only)', () => {
     const rejectRules = loadRulesFile(rejectPath);
 
     assert.ok(Array.isArray(directRules), 'directRules must be an array');
-    assert.strictEqual(directRules.length, 0, 'canonical direct.yaml must be policy-neutral');
+    assert.ok(directRules.length > 0, 'direct.yaml must contain migrated public-safe direct rules');
 
     assert.ok(Array.isArray(rejectRules), 'rejectRules must be an array');
-    assert.strictEqual(rejectRules.length, 0, 'canonical reject.yaml must be policy-neutral');
+    assert.strictEqual(rejectRules.length, 0, 'canonical reject.yaml remains policy-neutral empty');
   });
 
   it('parses explicit rule declarations from YAML content (sanitized fixture)', () => {
@@ -58,7 +58,12 @@ rules:
     const sources = loadAllDeclarativeSources({ rootDir: path.join(rootDir, 'src') });
 
     assert.ok(Array.isArray(sources.directRules));
+    assert.ok(sources.directRules.length > 0);
     assert.ok(Array.isArray(sources.rejectRules));
+    assert.ok(Array.isArray(sources.aiRules) && sources.aiRules.length > 0);
+    assert.ok(Array.isArray(sources.mediaRules) && sources.mediaRules.length > 0);
+    assert.ok(Array.isArray(sources.darwinRules) && sources.darwinRules.length > 0);
+    assert.ok(Array.isArray(sources.win32Rules) && sources.win32Rules.length > 0);
     assert.ok(sources.regions.hk);
     assert.ok(Array.isArray(sources.ruleProviders));
     assert.strictEqual(sources.ruleProviders.length, 0, 'canonical rule-providers.yaml must be policy-neutral');

@@ -25,7 +25,7 @@ export function rollupYamlPlugin(options = {}) {
       }
 
       var parsedData;
-      if (/(direct|reject)\.(yaml|yml)$/.test(id)) {
+      if (id.includes('/rules/') || /(direct|reject)\.(yaml|yml)$/.test(id)) {
         parsedData = parseRulesYaml(code, id);
       } else if (id.endsWith('regions.yaml') || id.endsWith('regions.yml')) {
         parsedData = parseRegionsYaml(code, id);

@@ -1,0 +1,111 @@
+# 声明式 AI 与 LLM 业务分流规则 (Public-safe AI Services & OAuth Dependencies)
+# 严格绑定至 Tier 1 意图组: 🤖 AI 服务
+# 包含 OpenAI、Anthropic、Google AI / Gemini / NotebookLM 以及关键 OAuth 认证依赖
+rules:
+  # Cursor 专有直连绕过 (必须置于 cursor.sh 之前)
+  - "DOMAIN,api2.cursor.sh,DIRECT"
+
+  # Google AI 认证与 OAuth 核心依赖 (解决 NotebookLM 认证与 location=unsupported 风控问题)
+  - "DOMAIN,accounts.google.com,🤖 AI 服务"
+  - "DOMAIN,oauth2.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,cloudcode-pa.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,daily-cloudcode-pa.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,daily-cloudcode-pa.sandbox.googleapis.com,🤖 AI 服务"
+
+  # Google AI 服务与 Gemini API (区域敏感服务)
+  - "DOMAIN,gemini.google.com,🤖 AI 服务"
+  - "DOMAIN,aistudio.google.com,🤖 AI 服务"
+  - "DOMAIN,notebooklm.google.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,notebooklm.google,🤖 AI 服务"
+  - "DOMAIN,makersuite.google.com,🤖 AI 服务"
+  - "DOMAIN,ai.google.dev,🤖 AI 服务"
+  - "DOMAIN,alkalicore-pa.clients6.google.com,🤖 AI 服务"
+  - "DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI 服务"
+  - "DOMAIN,generativelanguage.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,notebooklm.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,aistudio.googleapis.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,deepmind.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,deepmind.google,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,generativeai.google,🤖 AI 服务"
+  - "DOMAIN,learning.google.com,🤖 AI 服务"
+  - "DOMAIN,jules.google.com,🤖 AI 服务"
+  - "DOMAIN,ogs.google.com,🤖 AI 服务"
+  - "DOMAIN,csp.withgoogle.com,🤖 AI 服务"
+  - "DOMAIN-KEYWORD,colab.research.google,🤖 AI 服务"
+  - "DOMAIN-KEYWORD,developerprofiles,🤖 AI 服务"
+  - "DOMAIN-KEYWORD,generativelanguage,🤖 AI 服务"
+
+  # Google 底层风控与通用基础设施 (与 AI 服务保持同节点以防风控阻断)
+  - "DOMAIN,www.google.com,🤖 AI 服务"
+  - "DOMAIN,signaler-pa.clients6.google.com,🤖 AI 服务"
+  - "DOMAIN,waa-pa.clients6.google.com,🤖 AI 服务"
+  - "DOMAIN,people-pa.clients6.google.com,🤖 AI 服务"
+  - "DOMAIN,ogads-pa.clients6.google.com,🤖 AI 服务"
+  - "DOMAIN,instantmessaging-pa.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,remotedesktop-pa.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,www.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,apis.google.com,🤖 AI 服务"
+  - "DOMAIN,clients4.google.com,🤖 AI 服务"
+  - "DOMAIN,b1.nel.goog,🤖 AI 服务"
+  - "DOMAIN,optimizationguide-pa.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,proactivebackend-pa.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,geller-pa.googleapis.com,🤖 AI 服务"
+  - "DOMAIN,myaccount.google.com,🤖 AI 服务"
+  - "DOMAIN,myactivity.google.com,🤖 AI 服务"
+
+  # Antigravity 域名兜底
+  - "DOMAIN-SUFFIX,antigravity-unleash.goog,🤖 AI 服务"
+  - "DOMAIN-KEYWORD,antigravity,🤖 AI 服务"
+
+  # OpenAI / ChatGPT
+  - "DOMAIN-SUFFIX,openai.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,oaistatic.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,chatgpt.com,🤖 AI 服务"
+  - "DOMAIN,chat.openai.com.cdn.cloudflare.net,🤖 AI 服务"
+  - "DOMAIN,openaiapi-site.azureedge.net,🤖 AI 服务"
+  - "DOMAIN,openaicom-api-bdcpf8c6d2e9atf6.z01.azurefd.net,🤖 AI 服务"
+  - "DOMAIN,openaicomproductionae4b.blob.core.windows.net,🤖 AI 服务"
+  - "DOMAIN,production-openaicom-storage.azureedge.net,🤖 AI 服务"
+  - "DOMAIN,o33249.ingest.sentry.io,🤖 AI 服务"
+  - "DOMAIN,openaicom.imgix.net,🤖 AI 服务"
+  - "DOMAIN,file.oaiusercontent.com,🤖 AI 服务"
+
+  # Anthropic / Claude
+  - "DOMAIN-SUFFIX,anthropic.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,claude.ai,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,usefathom.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,intercom.io,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,intercomcdn.com,🤖 AI 服务"
+
+  # Copilot / Bing AI / 通用 AI 服务
+  - "DOMAIN,www.bing.com,🤖 AI 服务"
+  - "DOMAIN,copilot.microsoft.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,bingapis.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,maxai.me,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,khanacademy.org,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,deepl.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,ai.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,chat.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,clipdrop.co,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,dify.ai,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,grok.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,groq.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,jasper.ai,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,meta.ai,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,openart.ai,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,perplexity.ai,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,poe.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,sora.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,x.ai,🤖 AI 服务"
+  - "DOMAIN,gateway.ai.cloudflare.com,🤖 AI 服务"
+  - "DOMAIN,api.github.com,🤖 AI 服务"
+  - "DOMAIN,cdn.auth0.com,🤖 AI 服务"
+  - "DOMAIN,challenges.cloudflare.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,identrust.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,elevenlabs.io,🤖 AI 服务"
+
+  # Cursor 编辑器生态
+  - "DOMAIN-SUFFIX,cursor.sh,🤖 AI 服务"
+  - "DOMAIN,marketplace.cursorapi.com,🤖 AI 服务"
+  - "DOMAIN,download.todesktop.com,🤖 AI 服务"
+  - "DOMAIN-SUFFIX,cursor-cdn.com,🤖 AI 服务"

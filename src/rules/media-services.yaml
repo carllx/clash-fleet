@@ -1,0 +1,9 @@
+# 声明式媒体服务分流规则 (Public-safe Media Services)
+# 严格绑定至 Tier 1 意图组: 🎵 媒体服务
+rules:
+  - "DOMAIN-SUFFIX,spotifycdn.com,🎵 媒体服务"
+  - "DOMAIN-SUFFIX,spotify.com,🎵 媒体服务"
+  - "DOMAIN,audio-ak-spotify-com.akamaized.net,🎵 媒体服务"
+  - "DOMAIN-SUFFIX,scdn.co,🎵 媒体服务"
+  - "DOMAIN-SUFFIX,spotify.design,🎵 媒体服务"
+  - "DOMAIN-SUFFIX,spotifycharts.com,🎵 媒体服务"

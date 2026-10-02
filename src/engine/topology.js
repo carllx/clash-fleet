@@ -51,6 +51,8 @@ export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
   var allKnownFleetGroupNames = {
     '🔰 节点选择': true,
     '🚀 自动优选': true,
+    '🤖 AI 服务': true,
+    '🎵 媒体服务': true,
   };
 
   // 1. 构建 Tier 2 物理地区池
@@ -111,7 +113,8 @@ export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
     hasTier15 = true;
   }
 
-  // 3. 构建 Tier 1 业务意图层 (基线意图组：🔰 节点选择)
+  // 3. 构建 Tier 1 业务意图层 (🔰 节点选择, 🤖 AI 服务, 🎵 媒体服务)
+  // 3.1 🔰 节点选择: 调度优选层 + 有效地区池 + DIRECT
   var tier1Proxies = [];
   if (hasTier15) {
     tier1Proxies.push(autoSelectGroupName);
@@ -119,15 +122,63 @@ export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
   for (var t2 = 0; t2 < validTier2Names.length; t2++) {
     tier1Proxies.push(validTier2Names[t2]);
   }
-
   // 保底追加 DIRECT
   tier1Proxies.push('DIRECT');
+
+  // 3.2 🤖 AI 服务
+  // 优先选取 US / JP / SG 地区池；HK 兜底；无地区时严格 Fail-Closed 至 REJECT，防止凭据与敏感请求直连泄露
+  var aiPreferredKeys = ['🇺🇸 美国', '🇯🇵 日本', '🇸🇬 新加坡'];
+  var aiProxies = [];
+  for (var aiIdx = 0; aiIdx < aiPreferredKeys.length; aiIdx++) {
+    var candidate = aiPreferredKeys[aiIdx];
+    if (validTier2Names.indexOf(candidate) !== -1) {
+      aiProxies.push(candidate);
+    }
+  }
+  if (validTier2Names.indexOf('🇭🇰 香港') !== -1) {
+    aiProxies.push('🇭🇰 香港');
+  }
+  if (aiProxies.length === 0) {
+    // 若无上述特定地区，但存在其他有效地区池，则使用其他地区
+    for (var remIdx = 0; remIdx < validTier2Names.length; remIdx++) {
+      aiProxies.push(validTier2Names[remIdx]);
+    }
+  }
+  if (aiProxies.length === 0) {
+    aiProxies.push('REJECT');
+  }
+
+  // 3.3 🎵 媒体服务
+  // 优先选取非港地区池；若仅有香港则兜底至香港；若无任何节点则直连
+  var mediaProxies = [];
+  for (var mIdx = 0; mIdx < validTier2Names.length; mIdx++) {
+    var mName = validTier2Names[mIdx];
+    if (mName !== '🇭🇰 香港') {
+      mediaProxies.push(mName);
+    }
+  }
+  if (mediaProxies.length === 0 && validTier2Names.indexOf('🇭🇰 香港') !== -1) {
+    mediaProxies.push('🇭🇰 香港');
+  }
+  if (mediaProxies.length === 0) {
+    mediaProxies.push('DIRECT');
+  }
 
   var tier1Groups = [
     {
       name: '🔰 节点选择',
       type: 'select',
       proxies: tier1Proxies,
+    },
+    {
+      name: '🤖 AI 服务',
+      type: 'select',
+      proxies: aiProxies,
+    },
+    {
+      name: '🎵 媒体服务',
+      type: 'select',
+      proxies: mediaProxies,
     },
   ];
 

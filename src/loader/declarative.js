@@ -131,17 +131,25 @@ import { loadRuleProvidersFile } from './rule-providers.js';
  *
  * @param {object} options 加载选项
  * @param {string} options.rootDir 源码根目录 (如 src)
- * @returns {{ directRules: string[], rejectRules: string[], regions: object, ruleProviders: Array<object> }} 声明式数据包
+ * @returns {{ directRules: string[], rejectRules: string[], aiRules: string[], mediaRules: string[], darwinRules: string[], win32Rules: string[], regions: object, ruleProviders: Array<object> }} 声明式数据包
  */
 export function loadAllDeclarativeSources({ rootDir }) {
   const directPath = path.join(rootDir, 'rules/direct.yaml');
   const rejectPath = path.join(rootDir, 'rules/reject.yaml');
+  const aiPath = path.join(rootDir, 'rules/ai-services.yaml');
+  const mediaPath = path.join(rootDir, 'rules/media-services.yaml');
+  const darwinPath = path.join(rootDir, 'rules/platforms/darwin.yaml');
+  const win32Path = path.join(rootDir, 'rules/platforms/win32.yaml');
   const regionsPath = path.join(rootDir, 'presets/regions.yaml');
   const providersPath = path.join(rootDir, 'providers/rule-providers.yaml');
 
   return {
     directRules: loadRulesFile(directPath),
     rejectRules: loadRulesFile(rejectPath),
+    aiRules: fs.existsSync(aiPath) ? loadRulesFile(aiPath) : [],
+    mediaRules: fs.existsSync(mediaPath) ? loadRulesFile(mediaPath) : [],
+    darwinRules: fs.existsSync(darwinPath) ? loadRulesFile(darwinPath) : [],
+    win32Rules: fs.existsSync(win32Path) ? loadRulesFile(win32Path) : [],
     regions: loadRegionsFile(regionsPath),
     ruleProviders: fs.existsSync(providersPath) ? loadRuleProvidersFile(providersPath) : [],
   };

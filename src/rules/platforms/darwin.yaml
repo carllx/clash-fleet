@@ -1,0 +1,27 @@
+# macOS 专有进程分流规则声明 (Darwin Process Rules)
+# 与 Windows 规则在构建期共同注入 Universal Script.js
+rules:
+  # 国内直连协作应用
+  - "PROCESS-NAME,DingTalk.app,DIRECT"
+  - "PROCESS-NAME,Dt WebView Helper.app,DIRECT"
+  - "PROCESS-NAME,VooV Meeting,DIRECT"
+  - "PROCESS-NAME,SunloginClient,DIRECT"
+
+  # Antigravity 开发者环境进程
+  - "PROCESS-NAME,Antigravity,🤖 AI 服务"
+  - "PROCESS-NAME,Antigravity IDE,🤖 AI 服务"
+  - "PROCESS-NAME,agy,🤖 AI 服务"
+  - "PROCESS-NAME,Antigravity Helper,🤖 AI 服务"
+  - "PROCESS-NAME,Antigravity Helper (Renderer),🤖 AI 服务"
+  - "PROCESS-PATH,/Applications/Antigravity IDE.app/Contents/MacOS/Electron,🤖 AI 服务"
+  - "PROCESS-PATH,/Applications/Antigravity IDE.app/Contents/MacOS/Antigravity IDE,🤖 AI 服务"
+  - "PROCESS-NAME,Antigravity IDE Helper,🤖 AI 服务"
+  - "PROCESS-NAME,Antigravity IDE Helper (GPU),🤖 AI 服务"
+  - "PROCESS-NAME,Antigravity IDE Helper (Renderer),🤖 AI 服务"
+  - "PROCESS-NAME,Antigravity IDE Helper (Plugin),🤖 AI 服务"
+  - "PROCESS-NAME,language_server,🤖 AI 服务"
+  - "PROCESS-NAME,language_server_macos_arm,🤖 AI 服务"
+  - "PROCESS-NAME,language_server_macos_x64,🤖 AI 服务"
+  - "PROCESS-PATH,/Applications/Antigravity.app/Contents/Resources/bin/language_server,🤖 AI 服务"
+  - "PROCESS-PATH,/Applications/Antigravity IDE.app/Contents/Resources/app/extensions/antigravity/bin/language_server_macos_arm,🤖 AI 服务"
+  - "PROCESS-PATH,/Applications/Antigravity IDE.app/Contents/Resources/app/extensions/antigravity/bin/language_server_macos_x64,🤖 AI 服务"
