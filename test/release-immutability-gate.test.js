@@ -91,17 +91,21 @@ test('GitHub Immutable Releases Isolation Gate Suite', async (t) => {
   });
 
   await t.test('verifyReleaseAssetsParity tests', async (st) => {
+    const HASH_SCRIPT = '1111111111111111111111111111111111111111111111111111111111111111';
+    const HASH_PROV = '2222222222222222222222222222222222222222222222222222222222222222';
+    const HASH_SUMS = '3333333333333333333333333333333333333333333333333333333333333333';
+
     const expectedChecksums = {
-      'Script.js': 'hash-script',
-      'RULE_ASSET_PROVENANCE.json': 'hash-prov',
-      'SHA256SUMS.txt': 'hash-sums',
+      'Script.js': HASH_SCRIPT,
+      'RULE_ASSET_PROVENANCE.json': HASH_PROV,
+      'SHA256SUMS.txt': HASH_SUMS,
     };
 
-    await st.test('passes when release assets match expected files exactly', () => {
+    await st.test('passes when release assets have authoritative sha256:<hash> matching exactly', () => {
       const assets = [
-        { name: 'RULE_ASSET_PROVENANCE.json', digest: 'hash-prov' },
-        { name: 'SHA256SUMS.txt', digest: 'hash-sums' },
-        { name: 'Script.js', digest: 'hash-script' },
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `sha256:${HASH_PROV}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
+        { name: 'Script.js', digest: `sha256:${HASH_SCRIPT}` },
       ];
       const res = verifyReleaseAssetsParity(assets, expectedChecksums);
       assert.equal(res.passed, true);
@@ -110,11 +114,22 @@ test('GitHub Immutable Releases Isolation Gate Suite', async (t) => {
       assert.deepEqual(res.corrupted, []);
     });
 
-    await st.test('fails closed when release asset digest is corrupted/mismatched', () => {
+    await st.test('passes with case-insensitive sha256 hex normalization', () => {
       const assets = [
-        { name: 'RULE_ASSET_PROVENANCE.json', digest: 'hash-prov' },
-        { name: 'SHA256SUMS.txt', digest: 'hash-sums' },
-        { name: 'Script.js', digest: 'tampered-hash-script' },
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `SHA256:${HASH_PROV.toUpperCase()}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
+        { name: 'Script.js', digest: `sha256:${HASH_SCRIPT}` },
+      ];
+      const res = verifyReleaseAssetsParity(assets, expectedChecksums);
+      assert.equal(res.passed, true);
+    });
+
+    await st.test('fails closed when release asset digest has sha256:<wrong hash>', () => {
+      const wrongHash = '4444444444444444444444444444444444444444444444444444444444444444';
+      const assets = [
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `sha256:${HASH_PROV}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
+        { name: 'Script.js', digest: `sha256:${wrongHash}` },
       ];
       const res = verifyReleaseAssetsParity(assets, expectedChecksums);
       assert.equal(res.passed, false);
@@ -122,10 +137,55 @@ test('GitHub Immutable Releases Isolation Gate Suite', async (t) => {
       assert.equal(res.corrupted.length, 1);
     });
 
+    await st.test('fails closed when expected hash exists but remote asset digest is missing', () => {
+      const assets = [
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `sha256:${HASH_PROV}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
+        { name: 'Script.js' }, // missing digest
+      ];
+      const res = verifyReleaseAssetsParity(assets, expectedChecksums);
+      assert.equal(res.passed, false);
+      assert.match(res.detail, /missing digest/i);
+      assert.equal(res.corrupted.length, 1);
+    });
+
+    await st.test('fails closed on malformed SHA-256 (not 64 hex or non-hex chars)', () => {
+      const assets = [
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `sha256:${HASH_PROV}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
+        { name: 'Script.js', digest: 'sha256:too-short' },
+      ];
+      const res = verifyReleaseAssetsParity(assets, expectedChecksums);
+      assert.equal(res.passed, false);
+      assert.match(res.detail, /Malformed SHA-256 digest/i);
+    });
+
+    await st.test('fails closed when digest misses algorithm prefix', () => {
+      const assets = [
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `sha256:${HASH_PROV}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
+        { name: 'Script.js', digest: HASH_SCRIPT }, // bare hex without sha256:
+      ];
+      const res = verifyReleaseAssetsParity(assets, expectedChecksums);
+      assert.equal(res.passed, false);
+      assert.match(res.detail, /missing algorithm prefix/i);
+    });
+
+    await st.test('fails closed on unsupported digest algorithm (e.g. sha512:)', () => {
+      const assets = [
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `sha256:${HASH_PROV}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
+        { name: 'Script.js', digest: `sha512:${'a'.repeat(128)}` },
+      ];
+      const res = verifyReleaseAssetsParity(assets, expectedChecksums);
+      assert.equal(res.passed, false);
+      assert.match(res.detail, /Unsupported digest algorithm: "sha512"/i);
+    });
+
     await st.test('fails closed when expected asset is missing', () => {
       const assets = [
-        { name: 'Script.js' },
-        { name: 'SHA256SUMS.txt' },
+        { name: 'Script.js', digest: `sha256:${HASH_SCRIPT}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
       ];
       const res = verifyReleaseAssetsParity(assets, expectedChecksums);
       assert.equal(res.passed, false);
@@ -134,9 +194,9 @@ test('GitHub Immutable Releases Isolation Gate Suite', async (t) => {
 
     await st.test('fails closed when unexpected extra asset is present', () => {
       const assets = [
-        { name: 'RULE_ASSET_PROVENANCE.json' },
-        { name: 'SHA256SUMS.txt' },
-        { name: 'Script.js' },
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `sha256:${HASH_PROV}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
+        { name: 'Script.js', digest: `sha256:${HASH_SCRIPT}` },
         { name: 'extra-secret.env' },
       ];
       const res = verifyReleaseAssetsParity(assets, expectedChecksums);
@@ -151,6 +211,10 @@ test('GitHub Immutable Releases Isolation Gate Suite', async (t) => {
   });
 
   await t.test('assertReleaseImmutabilityGate composite gate tests', async (st) => {
+    const HASH_SCRIPT = '1111111111111111111111111111111111111111111111111111111111111111';
+    const HASH_PROV = '2222222222222222222222222222222222222222222222222222222222222222';
+    const HASH_SUMS = '3333333333333333333333333333333333333333333333333333333333333333';
+
     const validRepoSetting = { enabled: true };
     const validRelease = {
       id: 999,
@@ -158,15 +222,15 @@ test('GitHub Immutable Releases Isolation Gate Suite', async (t) => {
       draft: false,
       immutable: true,
       assets: [
-        { name: 'Script.js' },
-        { name: 'RULE_ASSET_PROVENANCE.json' },
-        { name: 'SHA256SUMS.txt' },
+        { name: 'Script.js', digest: `sha256:${HASH_SCRIPT}` },
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: `sha256:${HASH_PROV}` },
+        { name: 'SHA256SUMS.txt', digest: `sha256:${HASH_SUMS}` },
       ],
     };
     const validChecksums = {
-      'Script.js': 'a',
-      'RULE_ASSET_PROVENANCE.json': 'b',
-      'SHA256SUMS.txt': 'c',
+      'Script.js': HASH_SCRIPT,
+      'RULE_ASSET_PROVENANCE.json': HASH_PROV,
+      'SHA256SUMS.txt': HASH_SUMS,
     };
 
     await st.test('composite gate succeeds when all criteria met', () => {
@@ -207,7 +271,7 @@ test('GitHub Immutable Releases Isolation Gate Suite', async (t) => {
         () =>
           assertReleaseImmutabilityGate({
             repoSetting: validRepoSetting,
-            releaseObject: { ...validRelease, assets: [{ name: 'Script.js' }] },
+            releaseObject: { ...validRelease, assets: [{ name: 'Script.js', digest: `sha256:${HASH_SCRIPT}` }] },
             expectedChecksums: validChecksums,
           }),
         /\[immutability-gate\] Assets parity check failed/

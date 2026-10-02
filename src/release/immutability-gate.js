@@ -89,11 +89,50 @@ export function verifyPublishedReleaseImmutability(release) {
 }
 
 /**
+ * 严格解析并校验 GitHub Release Asset 摘要 (Authoritative digest parser)
+ *
+ * GitHub REST API 规范 (apiVersion=2026-03-10):
+ * - digest 形状为 "sha256:<64-hex>"
+ * - 仅接受 sha256 算法；不支持算法（如 sha512:）必须抛出/返回错误
+ * - 格式不合法或非 64 位十六进制必须 fail-closed
+ *
+ * @param {string|null|undefined} rawDigest 原始 digest 字符串 (如 asset.digest 或 asset.sha256)
+ * @returns {{ valid: boolean, hash: string|null, error?: string }}
+ */
+export function parseAndValidateSha256Digest(rawDigest) {
+  if (typeof rawDigest !== 'string' || !rawDigest.trim()) {
+    return { valid: false, hash: null, error: 'Digest is missing or empty' };
+  }
+
+  const trimmed = rawDigest.trim();
+  const colonIndex = trimmed.indexOf(':');
+
+  if (colonIndex === -1) {
+    // 缺失 algorithm prefix
+    return { valid: false, hash: null, error: `Malformed digest (missing algorithm prefix): "${trimmed}"` };
+  }
+
+  const algorithm = trimmed.slice(0, colonIndex).toLowerCase();
+  const hex = trimmed.slice(colonIndex + 1);
+
+  if (algorithm !== 'sha256') {
+    return { valid: false, hash: null, error: `Unsupported digest algorithm: "${algorithm}". Expected "sha256"` };
+  }
+
+  if (!/^[a-fA-F0-9]{64}$/.test(hex)) {
+    return { valid: false, hash: null, error: `Malformed SHA-256 digest: expected 64 hex characters, got "${hex}"` };
+  }
+
+  return { valid: true, hash: hex.toLowerCase() };
+}
+
+/**
  * 校验 Release 上已发布的资产与本地确定性 Package 清单完全一致
  *
  * 保证：
  * 1. 资产文件集合与预期清单完全一一对应（零缺失、零冗余）；
- * 2. 若 Release Asset 携带 SHA-256 摘要 (digest/sha256)，严格比对哈希值一致性。
+ * 2. 若本地要求特定哈希 (expectedHash)，远程 asset 必须提供合法的 sha256: 摘要且严格匹配；
+ * 3. 缺失摘要、格式不合法、非 SHA-256 算法或哈希不一致均严格 Fail-Closed。
  *
  * @param {Array<{ name: string, digest?: string, sha256?: string }>} releaseAssets GitHub Release 对象上的 assets 列表
  * @param {Record<string, string>|string[]} expectedAssets 本地确定的文件哈希映射表 ({ 'Script.js': '<sha256>', ... }) 或文件名称列表
@@ -140,9 +179,22 @@ export function verifyReleaseAssetsParity(releaseAssets, expectedAssets) {
   for (const [name, expectedHash] of Object.entries(checksumMap)) {
     if (expectedHash && assetMap.has(name)) {
       const asset = assetMap.get(name);
-      const actualDigest = asset.digest || asset.sha256;
-      if (actualDigest && actualDigest !== expectedHash) {
-        corrupted.push(`${name} (expected ${expectedHash}, got ${actualDigest})`);
+      const rawDigest = asset.digest || asset.sha256;
+
+      if (!rawDigest) {
+        corrupted.push(`${name} (missing digest on release asset, expected sha256:${expectedHash.toLowerCase()})`);
+        continue;
+      }
+
+      const parsed = parseAndValidateSha256Digest(rawDigest);
+      if (!parsed.valid) {
+        corrupted.push(`${name} (${parsed.error})`);
+        continue;
+      }
+
+      const normalizedExpected = expectedHash.toLowerCase();
+      if (parsed.hash !== normalizedExpected) {
+        corrupted.push(`${name} (expected sha256:${normalizedExpected}, got sha256:${parsed.hash})`);
       }
     }
   }
