@@ -73,12 +73,17 @@ test('Boa 0.22 compatibility gate and CVR harness', async (t) => {
 
   await t.test('assertBoaCompatibilityEngine fails closed on wrong engine version (e.g. 0.23.0)', async () => {
     const fakeBoaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-boa-'));
-    const fakeBoa = path.join(fakeBoaDir, 'boa');
-    fs.writeFileSync(
-      fakeBoa,
-      `#!/usr/bin/env node\nif (process.argv.includes('--version')) { console.log('boa 0.23.1'); process.exit(0); }\n`,
-      { mode: 0o755 }
-    );
+    const isWin = process.platform === 'win32';
+    const fakeBoa = path.join(fakeBoaDir, isWin ? 'boa.cmd' : 'boa');
+    if (isWin) {
+      fs.writeFileSync(fakeBoa, '@echo off\r\necho boa 0.23.1\r\n');
+    } else {
+      fs.writeFileSync(
+        fakeBoa,
+        `#!/usr/bin/env node\nif (process.argv.includes('--version')) { console.log('boa 0.23.1'); process.exit(0); }\n`,
+        { mode: 0o755 }
+      );
+    }
 
     try {
       await assert.rejects(

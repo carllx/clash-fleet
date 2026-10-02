@@ -10,6 +10,18 @@ const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
+ * 跨平台安全执行子进程
+ * 在 Windows 下，execFile 直接执行 .cmd / .bat 文件会报 EINVAL (CVE-2024-27980 安全限制)。
+ * 针对批处理脚本显式添加 { shell: true }。
+ */
+function safeExecFile(bin, args, options = {}) {
+  const isWindows = process.platform === 'win32';
+  const isBatch = isWindows && /\.(cmd|bat)$/i.test(bin);
+  const spawnOpts = isBatch ? { ...options, shell: true } : options;
+  return execFileAsync(bin, args, spawnOpts);
+}
+
+/**
  * 查找可用的 Boa 二进制文件路径
  *
  * 查找顺序:
@@ -76,7 +88,7 @@ export async function assertBoaCompatibilityEngine(customBoaPath) {
 
   let stdout;
   try {
-    const res = await execFileAsync(bin, ['--version']);
+    const res = await safeExecFile(bin, ['--version']);
     stdout = res.stdout;
   } catch (err) {
     throw new Error(
@@ -166,7 +178,7 @@ export async function validateScript(code, options = {}) {
   // 4. Boa 0.22.0 纯静态 AST 语法树解析 (无运行时副作用)
   try {
     await withTempScript('boa-ast', code, async (tmpFile) => {
-      await execFileAsync(bin, ['-a', 'json', tmpFile]);
+      await safeExecFile(bin, ['-a', 'json', tmpFile]);
     });
   } catch (err) {
     const stdout = (err.stdout || '').trim();
@@ -215,7 +227,7 @@ ${code}
 
   try {
     return await withTempScript('boa-run', runnerScript, async (tmpFile) => {
-      const { stdout, stderr } = await execFileAsync(bin, [tmpFile]);
+      const { stdout, stderr } = await safeExecFile(bin, [tmpFile]);
 
       const startTag = '__FLEET_OUTPUT_START__';
       const endTag = '__FLEET_OUTPUT_END__';
