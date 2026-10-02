@@ -22,8 +22,8 @@ function appendItems(target, source) {
  *
  * 优先级顺序：
  * 1. Reject 拦截规则 (广告拦截优先于所有其他规则，防止穿透)
- * 2. 跨平台进程规则 (darwin + win32 进程规则共存于 Universal 规则链)
- * 3. 业务敏感 AI 与 OAuth 依赖规则 (在通用直连与通用代理之前，防止敏感 AI/OAuth 流量直连或分流漂移)
+ * 2. 业务敏感 AI 与 OAuth 依赖规则 (优先于进程规则与通用直连，防止敏感 AI/OAuth 流量被更早的 PROCESS DIRECT 意外截获)
+ * 3. 跨平台进程规则 (darwin + win32 进程规则共存于 Universal 规则链)
  * 4. 媒体服务规则 (如 Spotify)
  * 5. 自定义直连规则 (如学术镜像、公共服务白名单)
  * 6. 原配置下游既有规则 (保留原顺序)
@@ -70,12 +70,12 @@ export function assembleRules(existingRules, declarativeRules) {
   // 1. 前置拦截规则 (广告拦截优先于所有其他规则，防止穿透)
   appendItems(result, rejectList);
 
-  // 2. 跨平台进程规则 (darwin + win32 共同注入 Universal 规则链)
+  // 2. 业务敏感 AI 与 OAuth 依赖规则 (优先于平台进程规则与通用直连，防止敏感 AI/OAuth 流量被更早的 PROCESS DIRECT 意外截获)
+  appendItems(result, aiList);
+
+  // 3. 跨平台进程规则 (darwin + win32 共同注入 Universal 规则链)
   appendItems(result, darwinList);
   appendItems(result, win32List);
-
-  // 3. 业务敏感 AI 与 OAuth 依赖规则 (在通用直连与通用代理之前，防止 AI/OAuth 流量静默直连或分流漂移)
-  appendItems(result, aiList);
 
   // 4. 媒体服务规则
   appendItems(result, mediaList);

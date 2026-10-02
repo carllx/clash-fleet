@@ -132,5 +132,51 @@ test('Tier 1 Business Intent topology suite', async (t) => {
     assert.ok(custom);
     assert.deepEqual(custom.proxies, ['DIRECT', '🇭🇰 香港'], '🚀 自动优选 must be cleanly pruned from user groups when omitted');
   });
+
+  await t.test('strict region lock: locks AI service to specified region pool and does not switch', () => {
+    var proxies = [
+      { name: 'US-01', type: 'ss' },
+      { name: 'JP-01', type: 'ss' },
+      { name: 'HK-01', type: 'ss' },
+    ];
+
+    // Case 1: lock to US
+    var groupsUS = assembleTopology(proxies, regionPresets, [], { lockedAiRegion: 'US' });
+    var aiUS = groupsUS.find((g) => g.name === '🤖 AI 服务');
+    assert.ok(aiUS);
+    assert.deepEqual(aiUS.proxies, ['🇺🇸 美国'], 'Must only contain locked US pool, not JP or HK');
+
+    // Case 2: lock to JP
+    var groupsJP = assembleTopology(proxies, regionPresets, [], { lockedAiRegion: 'jp' });
+    var aiJP = groupsJP.find((g) => g.name === '🤖 AI 服务');
+    assert.ok(aiJP);
+    assert.deepEqual(aiJP.proxies, ['🇯🇵 日本'], 'Must only contain locked JP pool, not US or HK');
+  });
+
+  await t.test('strict region lock: fails closed to REJECT when locked region is absent or pruned', () => {
+    var proxiesNoUS = [
+      { name: 'JP-01', type: 'ss' },
+      { name: 'HK-01', type: 'ss' },
+    ];
+
+    // User locks to US, but US does not exist in proxies
+    var groups = assembleTopology(proxiesNoUS, regionPresets, [], { lockedAiRegion: 'US' });
+    var aiGroup = groups.find((g) => g.name === '🤖 AI 服务');
+    assert.ok(aiGroup);
+    // Hard invariant: MUST NOT fallback to JP or HK
+    assert.deepEqual(aiGroup.proxies, ['REJECT'], 'Must fail closed to REJECT and NOT switch to JP or HK');
+  });
+
+  await t.test('strict region lock: fails closed on unknown or invalid locked region identifier', () => {
+    var proxies = [
+      { name: 'US-01', type: 'ss' },
+      { name: 'JP-01', type: 'ss' },
+    ];
+
+    var groups = assembleTopology(proxies, regionPresets, [], { lockedAiRegion: 'MARS' });
+    var aiGroup = groups.find((g) => g.name === '🤖 AI 服务');
+    assert.ok(aiGroup);
+    assert.deepEqual(aiGroup.proxies, ['REJECT'], 'Unknown region lock must fail closed to REJECT');
+  });
 });
 

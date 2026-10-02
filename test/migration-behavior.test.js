@@ -26,24 +26,57 @@ test('Migration Behavior & Rule Precedence Suite', async (t) => {
 
     // Assert exact order:
     // 1. Reject
-    // 2. Darwin process
-    // 3. Win32 process
-    // 4. AI & OAuth
+    // 2. AI & OAuth
+    // 3. Darwin process
+    // 4. Win32 process
     // 5. Media
     // 6. Direct
     // 7. Downstream
     assert.deepEqual(assembled, [
       'DOMAIN-SUFFIX,ad.example.com,REJECT',
-      'PROCESS-NAME,DingTalk.app,DIRECT',
-      'PROCESS-NAME,DingTalk.exe,DIRECT',
       'DOMAIN,api2.cursor.sh,DIRECT',
       'DOMAIN-SUFFIX,cursor.sh,🤖 AI 服务',
       'DOMAIN,accounts.google.com,🤖 AI 服务',
+      'PROCESS-NAME,DingTalk.app,DIRECT',
+      'PROCESS-NAME,DingTalk.exe,DIRECT',
       'DOMAIN-SUFFIX,spotify.com,🎵 媒体服务',
       'DOMAIN-SUFFIX,cnki.net,DIRECT',
       'GEOIP,CN,DIRECT',
       'MATCH,🔰 节点选择',
     ]);
+  });
+
+  await t.test('sensitive AI & OAuth rules precede platform PROCESS DIRECT rules', () => {
+    var declarativeRules = {
+      aiRules: [
+        'DOMAIN,accounts.google.com,🤖 AI 服务',
+        'DOMAIN,oauth2.googleapis.com,🤖 AI 服务',
+      ],
+      darwinRules: [
+        'PROCESS-NAME,DingTalk.app,DIRECT',
+        'PROCESS-NAME,BrowserHelper,DIRECT',
+      ],
+      win32Rules: [
+        'PROCESS-NAME,DingTalk.exe,DIRECT',
+      ],
+    };
+
+    var assembled = assembleRules([], declarativeRules);
+
+    var accountsIdx = assembled.indexOf('DOMAIN,accounts.google.com,🤖 AI 服务');
+    var oauthIdx = assembled.indexOf('DOMAIN,oauth2.googleapis.com,🤖 AI 服务');
+    var darwinProcessIdx = assembled.indexOf('PROCESS-NAME,DingTalk.app,DIRECT');
+    var win32ProcessIdx = assembled.indexOf('PROCESS-NAME,DingTalk.exe,DIRECT');
+
+    assert.ok(accountsIdx !== -1);
+    assert.ok(oauthIdx !== -1);
+    assert.ok(darwinProcessIdx !== -1);
+    assert.ok(win32ProcessIdx !== -1);
+
+    // AI & OAuth must precede PROCESS DIRECT rules
+    assert.ok(accountsIdx < darwinProcessIdx, 'accounts.google.com must precede darwin PROCESS-NAME DIRECT');
+    assert.ok(oauthIdx < darwinProcessIdx, 'oauth2.googleapis.com must precede darwin PROCESS-NAME DIRECT');
+    assert.ok(accountsIdx < win32ProcessIdx, 'accounts.google.com must precede win32 PROCESS-NAME DIRECT');
   });
 
   await t.test('sensitive AI & OAuth routes precede broad DIRECT and downstream rules', () => {

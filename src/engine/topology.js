@@ -34,16 +34,49 @@ export function formatRegionGroupName(regionDef) {
 }
 
 /**
+ * 根据用户输入的地区标识 (如 'US', 'us', '美国', '🇺🇸 美国') 解析对应的标准策略组名
+ *
+ * @param {string} regionIdentifier 地区标识字符串
+ * @param {object} regionPresets 预置地区配置字典
+ * @returns {string|null} 对应的标准策略组名，未匹配返回 null
+ */
+export function resolveRegionGroupName(regionIdentifier, regionPresets) {
+  if (!regionIdentifier || typeof regionIdentifier !== 'string' || !regionPresets) {
+    return null;
+  }
+  var trimmed = regionIdentifier.trim();
+  var normalized = trimmed.toLowerCase();
+  var rKeys = Object.keys(regionPresets);
+  for (var i = 0; i < rKeys.length; i++) {
+    var k = rKeys[i];
+    var def = regionPresets[k];
+    if (!def) continue;
+    var groupName = formatRegionGroupName(def);
+    if (
+      k.toLowerCase() === normalized ||
+      (def.name && def.name.toLowerCase() === normalized) ||
+      groupName.toLowerCase() === normalized
+    ) {
+      return groupName;
+    }
+  }
+  return null;
+}
+
+/**
  * 组装三级分层策略组拓扑
  *
  * @param {Array} proxies 经清洗去重后的代理节点列表
  * @param {object} regionPresets 声明式地区正则字典
  * @param {Array} [existingProxyGroups] 订阅或原有配置中的策略组列表
+ * @param {object} [options] 拓扑装配选项 (如 lockedAiRegion)
  * @returns {Array} 组装完成的策略组列表
  */
-export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
+export function assembleTopology(proxies, regionPresets, existingProxyGroups, options) {
   var classified = classifyProxies(proxies, regionPresets);
   var buckets = classified.buckets;
+
+  var lockedAiRegion = (options && (options.lockedAiRegion || options.aiRegion)) || null;
 
   var tier2Groups = [];
   var validTier2Names = [];
@@ -129,21 +162,36 @@ export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
   tier1Proxies.push('DIRECT');
 
   // 3.2 🤖 AI 服务
-  // 严格选取受支持的地区池：US / JP / SG；HK 作为可用性兜底；若均不存在则严格 Fail-Closed 至 REJECT
-  // 避免向英国(UK)等受 Gemini 403 地区风控的区域漫游导致断连，防止凭据与敏感请求直连泄露
-  var aiPreferredKeys = ['🇺🇸 美国', '🇯🇵 日本', '🇸🇬 新加坡'];
+  // 严格区域锁定 (Strict Region Lock) 与受支持地区白名单逻辑：
+  // 1. 若用户显式指定了 lockedAiRegion (如 'US', 'JP')：
+  //    - 解析出对应的标准地区池名称 (如 '🇺🇸 美国')；
+  //    - 若该目标地区池在 validTier2Names 中有效存在，则策略组仅绑定该锁定地区池；
+  //    - 若该目标地区池缺失或已被裁剪，严格 Fail-Closed 至 ['REJECT']，严禁自动切换或回退至其他国家！
+  // 2. 若用户未指定锁定地区 (默认偏好模式)：
+  //    - 优先选取受支持的地区池 (US / JP / SG)；以 HK 作为可用性兜底；
+  //    - 若上述受支持地区池均不存在，严格 Fail-Closed 至 ['REJECT']，防止凭据与敏感请求泄露。
   var aiProxies = [];
-  for (var aiIdx = 0; aiIdx < aiPreferredKeys.length; aiIdx++) {
-    var candidate = aiPreferredKeys[aiIdx];
-    if (validTier2Names.indexOf(candidate) !== -1) {
-      aiProxies.push(candidate);
+  if (lockedAiRegion) {
+    var targetGroupName = resolveRegionGroupName(lockedAiRegion, regionPresets);
+    if (targetGroupName && validTier2Names.indexOf(targetGroupName) !== -1) {
+      aiProxies.push(targetGroupName);
+    } else {
+      aiProxies.push('REJECT');
     }
-  }
-  if (validTier2Names.indexOf('🇭🇰 香港') !== -1) {
-    aiProxies.push('🇭🇰 香港');
-  }
-  if (aiProxies.length === 0) {
-    aiProxies.push('REJECT');
+  } else {
+    var aiPreferredKeys = ['🇺🇸 美国', '🇯🇵 日本', '🇸🇬 新加坡'];
+    for (var aiIdx = 0; aiIdx < aiPreferredKeys.length; aiIdx++) {
+      var candidate = aiPreferredKeys[aiIdx];
+      if (validTier2Names.indexOf(candidate) !== -1) {
+        aiProxies.push(candidate);
+      }
+    }
+    if (validTier2Names.indexOf('🇭🇰 香港') !== -1) {
+      aiProxies.push('🇭🇰 香港');
+    }
+    if (aiProxies.length === 0) {
+      aiProxies.push('REJECT');
+    }
   }
 
   // 3.3 🎵 媒体服务

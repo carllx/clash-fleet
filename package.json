@@ -9,7 +9,8 @@
   "scripts": {
     "setup:boa": "node ./scripts/setup-boa.js",
     "build": "node ./bin/fleet.js build",
-    "test": "node --test test/**/*.test.js"
+    "test": "node --test test/**/*.test.js",
+    "test:oracle": "FLEET_REQUIRE_LEGACY_ORACLE=1 node --test test/legacy-oracle-comparison.test.js"
   },
   "keywords": [
     "clash",

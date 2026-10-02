@@ -67,7 +67,7 @@
 | 行为 ID | 现网意图 (Legacy Intent) | 处置 (Disposition) | Fleet 落地位置 | 验证证据 | 架构设计考量 / Delta 说明 |
 |---|---|:---:|---|---|---|
 | **BEH-NET-01** | 纯 IP 连接 SNI 域名嗅探 (DoH 漏网治理) | PRESERVED | `src/engine/sniffer.js` | `test/legacy-oracle-comparison.test.js` | 启用 `parse-pure-ip: true`，监听 443/8443 (TLS) 与 80/8080-8880 (HTTP)，解决 Chrome DoH 绕过 TUN 劫持的问题。 |
-| **BEH-TOPO-01** | Tier 1 `🤖 AI 服务` 业务意图策略组 | INTENTIONAL ARCHITECTURE DELTA | `src/engine/topology.js` | `test/business-intent-topology.test.js` | 动态引用 US / JP / SG 地区池并以 HK 兜底；无节点时严格 Fail-Closed 至 `REJECT`（杜绝静默直连泄露凭据）。 |
+| **BEH-TOPO-01** | Tier 1 `🤖 AI 服务` 业务意图策略组 (含 Strict Region Lock) | INTENTIONAL ARCHITECTURE DELTA | `src/engine/topology.js` | `test/business-intent-topology.test.js` | 默认模式动态引用 US / JP / SG 地区池并以 HK 兜底；支持用户显式锁定 intended region (如 US/JP)，当锁定地区池缺失/被裁剪时严格 Fail-Closed 至 `REJECT`，绝不静默跨国家切换；不引入 sticky node/exact-IP；全无受支持地区时严格 Fail-Closed 至 `REJECT`（杜绝静默直连泄露凭据）。 |
 | **BEH-TOPO-02** | Tier 1 `🎵 媒体服务` 业务意图策略组 | INTENTIONAL ARCHITECTURE DELTA | `src/engine/topology.js` | `test/business-intent-topology.test.js` | 动态引用非港有效地区池；若仅有 HK 则兜底至 HK；无节点时安全回退至 DIRECT。 |
 | **BEH-TOPO-03** | Tier 1.5 `🚀 自动优选` 调度优选策略组 | PRESERVED | `src/engine/topology.js` | `test/topology.test.js` | 仅引用 Tier 2 地区池组名，严禁直接挂载物理节点；仅在有效地区池 >= 2 时按需生成。 |
 | **BEH-TOPO-04** | Tier 2 物理地区池 (`url-test`) | PRESERVED | `src/engine/topology.js` | `test/topology.test.js` | 依据预置正则归类物理节点并执行单点健康探测；空地区自动动态裁剪，且同步净化上层引用。 |
@@ -92,6 +92,6 @@
 ## 4. 结论与验收依据 (Conclusion & Acceptance Baseline)
 
 本矩阵以**行为意图保全 (Behavior Preservation)** 为最高准则：
-1. 核心 AI（ChatGPT, Claude, Gemini, NotebookLM）及风控底层域名得到 100% 完整继承，且 OAuth 认证断言优先分流；
+1. 核心 AI（ChatGPT, Claude, Gemini, NotebookLM）及风控底层域名得到 100% 完整继承，支持 Strict Region Lock 严格区域锁定（缺失时 Fail-Closed），且敏感 AI/OAuth 规则优先于通用平台 PROCESS 规则；
 2. 跨平台 macOS (`.app`) 与 Windows (`.exe`) 进程分流规则共存于同一 Universal Script，Boa 0.22 沙箱执行零报错；
 3. 私有 IP 与个人域名 100% 从公共仓库剔除，测试夹具与代码库保持绝对零机密。

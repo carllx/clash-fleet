@@ -25,9 +25,10 @@ import { assembleTopology } from './topology.js';
  * @param {object|null|undefined} config 原始配置对象
  * @param {string} profileName 配置文件名称
  * @param {object} declarativeData 声明式数据资产 (含 directRules, rejectRules, regions 等)
+ * @param {object} [options] 运行时增强选项 (如 lockedAiRegion)
  * @returns {object} 装配增强后的全新配置对象
  */
-export function assembleConfig(config, profileName, declarativeData) {
+export function assembleConfig(config, profileName, declarativeData, options) {
   var working = {};
   if (config && typeof config === 'object') {
     var keys = Object.keys(config);
@@ -51,10 +52,29 @@ export function assembleConfig(config, profileName, declarativeData) {
     }
   }
 
+  // 提取拓扑选项 (支持显式 options 参数，或从 config['fleet-options'] / declarativeData.options 中获取)
+  var topologyOptions = {};
+  if (options && typeof options === 'object') {
+    var optKeys = Object.keys(options);
+    for (var o = 0; o < optKeys.length; o++) {
+      topologyOptions[optKeys[o]] = options[optKeys[o]];
+    }
+  } else if (config && config['fleet-options'] && typeof config['fleet-options'] === 'object') {
+    var fKeys = Object.keys(config['fleet-options']);
+    for (var f = 0; f < fKeys.length; f++) {
+      topologyOptions[fKeys[f]] = config['fleet-options'][fKeys[f]];
+    }
+  } else if (declarativeData && declarativeData.options && typeof declarativeData.options === 'object') {
+    var dKeys = Object.keys(declarativeData.options);
+    for (var d = 0; d < dKeys.length; d++) {
+      topologyOptions[dKeys[d]] = declarativeData.options[dKeys[d]];
+    }
+  }
+
   // 3. 装配三级分层策略组拓扑 (Tier 1 -> Tier 1.5 -> Tier 2)
   if (regionPresets) {
     var rawProxies = Array.isArray(working.proxies) ? working.proxies : [];
-    working['proxy-groups'] = assembleTopology(rawProxies, regionPresets, working['proxy-groups']);
+    working['proxy-groups'] = assembleTopology(rawProxies, regionPresets, working['proxy-groups'], topologyOptions);
   }
 
   // 4. 注入 Sniffer 纯 IP 嗅探配置
