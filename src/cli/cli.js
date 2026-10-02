@@ -11,6 +11,7 @@ import {
   loadRuleProvidersFile,
   generateProvenanceManifest,
   serializeProvenanceManifest,
+  assertProviderParity,
 } from '../loader/rule-providers.js';
 
 /**
@@ -107,13 +108,14 @@ async function verifyScriptPipeline(code, failSummary) {
   assertNoErrors(report.errors, failSummary);
 
   // 对目标脚本执行沙箱运行契约验证
-  await executeScriptWithBoa(code, { proxies: [], rules: [] }, 'default');
+  const runtimeOutput = await executeScriptWithBoa(code, { proxies: [], rules: [] }, 'default');
 
   console.log('[fleet] Boa verification: PASSED (Static marker, AST syntax, and runtime callable verified)');
+  return runtimeOutput;
 }
 
 /**
- * 执行 build 命令 (构建 + 生成 Rule Asset Provenance 清单 + 强制 Fail-Closed 门禁校验)
+ * 执行 build 命令 (构建 + 生成 Rule Asset Provenance 清单 + 强制 Fail-Closed 门禁校验 + Provider Parity 校验)
  *
  * @param {object} options 构建选项
  */
@@ -162,7 +164,11 @@ export async function runBuild(options) {
   console.log(`[fleet] Build complete: ${buildResult.outputPath} (SHA-256: ${buildResult.hash})`);
 
   // 4. 强制执行 Boa 0.22 门禁
-  await verifyScriptPipeline(buildResult.code, 'Boa verification gate rejected the built script');
+  const runtimeOutput = await verifyScriptPipeline(buildResult.code, 'Boa verification gate rejected the built script');
+
+  // 5. 强制执行 Provider Provenance / Runtime Parity Gate (Fail-Closed)
+  assertProviderParity(runtimeOutput, providers);
+  console.log('[fleet] Provider provenance parity: PASSED (Manifest equals runtime rule-providers)');
 
   return {
     ...buildResult,

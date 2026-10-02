@@ -202,4 +202,58 @@ providers:
       /Pinned provider 'bad-pinned' must declare immutable 'revision'/
     );
   });
+
+  await t.test('custom input without provider integration passes when providers registry is empty', async () => {
+    const customDir = path.join(TMP_DIR, 'custom-empty');
+    fs.mkdirSync(customDir, { recursive: true });
+
+    const modularEntry = path.resolve(__dirname, 'fixtures/modular/index.js');
+    const emptyProvidersFile = path.join(customDir, 'rule-providers.yaml');
+    fs.writeFileSync(emptyProvidersFile, 'providers: []\n', 'utf8');
+
+    const result = await runBuild({
+      input: modularEntry,
+      output: path.join(customDir, 'Script.js'),
+      providers: emptyProvidersFile,
+    });
+
+    assert.ok(result.outputPath);
+    assert.equal(result.manifest.status, STATUS_NO_EXTERNAL);
+    assert.deepEqual(result.manifest.providers, []);
+  });
+
+  await t.test('custom input without provider integration FAILS CLOSED on non-empty providers due to parity gate', async () => {
+    const customDir = path.join(TMP_DIR, 'custom-mismatch');
+    fs.mkdirSync(customDir, { recursive: true });
+
+    const modularEntry = path.resolve(__dirname, 'fixtures/modular/index.js');
+    const nonEmptyProvidersFile = path.join(customDir, 'rule-providers.yaml');
+    const fixedSha = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+    fs.writeFileSync(
+      nonEmptyProvidersFile,
+      `
+providers:
+  - id: unintegrated-provider
+    behavior: domain
+    url: "https://raw.githubusercontent.com/example/rules/${fixedSha}/rules.yaml"
+    source:
+      strategy: pinned
+      revision:
+        kind: git-commit
+        value: "${fixedSha}"
+`,
+      'utf8'
+    );
+
+    await assert.rejects(
+      async () => {
+        await runBuild({
+          input: modularEntry,
+          output: path.join(customDir, 'Script.js'),
+          providers: nonEmptyProvidersFile,
+        });
+      },
+      /Provider provenance\/runtime parity violation/
+    );
+  });
 });

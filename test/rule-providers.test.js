@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parseRuleProvidersYaml,
   generateProvenanceManifest,
+  assertProviderParity,
   STATUS_NO_EXTERNAL,
   STATUS_FULLY_PINNED,
   STATUS_CONTAINS_DYNAMIC,
@@ -429,5 +430,84 @@ providers:
     assert.equal(dynEntry.classification, CLASSIFICATION_DYNAMIC);
     assert.equal(dynEntry.rollback_semantics, ROLLBACK_SEMANTICS_DYNAMIC);
     assert.equal(dynEntry.revision, null);
+  });
+
+  describe('assertProviderParity suite', () => {
+    it('passes when canonical empty providers matches empty runtime rule-providers', () => {
+      assert.doesNotThrow(() => {
+        assertProviderParity({}, []);
+      });
+      assert.doesNotThrow(() => {
+        assertProviderParity({ 'rule-providers': {} }, []);
+      });
+    });
+
+    it('passes when runtime providers match validated providers in id, behavior, and url', () => {
+      const validated = [
+        {
+          id: 'test-p1',
+          behavior: 'domain',
+          url: 'https://example.com/p1.yaml',
+        },
+      ];
+      const runtime = {
+        'rule-providers': {
+          'test-p1': {
+            type: 'http',
+            behavior: 'domain',
+            url: 'https://example.com/p1.yaml',
+          },
+        },
+      };
+
+      assert.doesNotThrow(() => {
+        assertProviderParity(runtime, validated);
+      });
+    });
+
+    it('fails closed when runtime rule-providers count or id mismatches validated providers', () => {
+      const validated = [
+        { id: 'p1', behavior: 'domain', url: 'https://example.com/1.yaml' },
+      ];
+      assert.throws(
+        () => assertProviderParity({}, validated),
+        /Provider provenance\/runtime parity violation/
+      );
+
+      assert.throws(
+        () => assertProviderParity({ 'rule-providers': { p2: {} } }, validated),
+        /Provider provenance\/runtime parity violation/
+      );
+    });
+
+    it('fails closed when behavior mismatches between runtime and validated providers', () => {
+      const validated = [
+        { id: 'p1', behavior: 'domain', url: 'https://example.com/1.yaml' },
+      ];
+      const runtime = {
+        'rule-providers': {
+          p1: { behavior: 'ipcidr', url: 'https://example.com/1.yaml' },
+        },
+      };
+      assert.throws(
+        () => assertProviderParity(runtime, validated),
+        /Provider provenance\/runtime parity violation for 'p1': expected behavior 'domain'/
+      );
+    });
+
+    it('fails closed when url mismatches between runtime and validated providers', () => {
+      const validated = [
+        { id: 'p1', behavior: 'domain', url: 'https://example.com/canonical.yaml' },
+      ];
+      const runtime = {
+        'rule-providers': {
+          p1: { behavior: 'domain', url: 'https://example.com/different.yaml' },
+        },
+      };
+      assert.throws(
+        () => assertProviderParity(runtime, validated),
+        /Provider provenance\/runtime parity violation for 'p1': expected url 'https:\/\/example.com\/canonical.yaml'/
+      );
+    });
   });
 });

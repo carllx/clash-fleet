@@ -112,6 +112,7 @@ export {
   loadRuleProvidersFile,
   generateProvenanceManifest,
   serializeProvenanceManifest,
+  assertProviderParity,
   STATUS_NO_EXTERNAL,
   STATUS_FULLY_PINNED,
   STATUS_CONTAINS_DYNAMIC,

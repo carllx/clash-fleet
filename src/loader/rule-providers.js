@@ -298,3 +298,61 @@ export function generateProvenanceManifest(providers) {
 export function serializeProvenanceManifest(manifest) {
   return JSON.stringify(manifest, null, 2) + '\n';
 }
+
+/**
+ * 校验构建产物运行时挂载的 Rule Providers 与清单声明的权威数据集严格恒等 (Fail-Closed)
+ *
+ * 保证对每一次成功的构建：
+ * 权威 Manifest 所述 Provider 集合 == Script.js 运行时真实挂载的 Fleet Provider 集合。
+ *
+ * @param {object|null|undefined} runtimeOutput Boa 0.22 执行返回的配置对象
+ * @param {Array<object>} validatedProviders 当次构建全局唯一的权威 providers 数据集
+ */
+export function assertProviderParity(runtimeOutput, validatedProviders) {
+  const safeProviders = Array.isArray(validatedProviders) ? validatedProviders : [];
+  const expectedMap = new Map();
+  for (let i = 0; i < safeProviders.length; i++) {
+    expectedMap.set(safeProviders[i].id, safeProviders[i]);
+  }
+
+  const effectiveProviders =
+    runtimeOutput && runtimeOutput['rule-providers'] && typeof runtimeOutput['rule-providers'] === 'object'
+      ? runtimeOutput['rule-providers']
+      : {};
+
+  const runtimeIds = Object.keys(effectiveProviders).sort();
+  const expectedIds = Array.from(expectedMap.keys()).sort();
+
+  // 1. 数量与 ID 集合严格恒等 (Bi-directional Set equality)
+  if (runtimeIds.length !== expectedIds.length) {
+    throw new Error(
+      `Provider provenance/runtime parity violation: manifest declares ${expectedIds.length} provider(s) [${expectedIds.join(', ')}], but generated Script.js runtime exposed ${runtimeIds.length} provider(s) [${runtimeIds.join(', ')}]`
+    );
+  }
+
+  for (let i = 0; i < expectedIds.length; i++) {
+    const id = expectedIds[i];
+    if (!Object.prototype.hasOwnProperty.call(effectiveProviders, id)) {
+      throw new Error(
+        `Provider provenance/runtime parity violation: provider '${id}' is declared in manifest but missing from runtime Script.js`
+      );
+    }
+
+    const expected = expectedMap.get(id);
+    const runtime = effectiveProviders[id];
+
+    // 2. Behavior 强比对
+    if (runtime.behavior !== expected.behavior) {
+      throw new Error(
+        `Provider provenance/runtime parity violation for '${id}': expected behavior '${expected.behavior}', but runtime Script.js has '${runtime.behavior}'`
+      );
+    }
+
+    // 3. URL 强比对
+    if (runtime.url !== expected.url) {
+      throw new Error(
+        `Provider provenance/runtime parity violation for '${id}': expected url '${expected.url}', but runtime Script.js has '${runtime.url}'`
+      );
+    }
+  }
+}
