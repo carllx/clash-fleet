@@ -99,14 +99,27 @@ test('GitHub Immutable Releases Isolation Gate Suite', async (t) => {
 
     await st.test('passes when release assets match expected files exactly', () => {
       const assets = [
-        { name: 'RULE_ASSET_PROVENANCE.json' },
-        { name: 'SHA256SUMS.txt' },
-        { name: 'Script.js' },
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: 'hash-prov' },
+        { name: 'SHA256SUMS.txt', digest: 'hash-sums' },
+        { name: 'Script.js', digest: 'hash-script' },
       ];
       const res = verifyReleaseAssetsParity(assets, expectedChecksums);
       assert.equal(res.passed, true);
       assert.deepEqual(res.missing, []);
       assert.deepEqual(res.unexpected, []);
+      assert.deepEqual(res.corrupted, []);
+    });
+
+    await st.test('fails closed when release asset digest is corrupted/mismatched', () => {
+      const assets = [
+        { name: 'RULE_ASSET_PROVENANCE.json', digest: 'hash-prov' },
+        { name: 'SHA256SUMS.txt', digest: 'hash-sums' },
+        { name: 'Script.js', digest: 'tampered-hash-script' },
+      ];
+      const res = verifyReleaseAssetsParity(assets, expectedChecksums);
+      assert.equal(res.passed, false);
+      assert.match(res.detail, /corrupted/);
+      assert.equal(res.corrupted.length, 1);
     });
 
     await st.test('fails closed when expected asset is missing', () => {

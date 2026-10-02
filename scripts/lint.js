@@ -23,9 +23,9 @@ const JS_EXTS = ['.js', '.mjs', '.cjs'];
 // 忽略故意的语法错误测试用例 fixture
 const IGNORED_FIXTURES = ['test/fixtures/invalid-syntax.js'];
 
-// 正则模式：匹配硬编码绝对用户家目录路径 (例如 /Users/<name> 或 C:\Users\<name>)
+// 正则模式：匹配硬编码绝对用户家目录路径 (例如 /Users/<name>, C:\Users\<name>, /home/<name>)
 const USER_PATH_PATTERN = new RegExp(
-  ['\\/', 'Users\\/', '[a-zA-Z0-9_-]+|', '[A-Z]:\\\\', 'Users\\\\', '[a-zA-Z0-9_-]+'].join(''),
+  ['\\/', 'Users\\/', '[a-zA-Z0-9_-]+|', '[A-Z]:\\\\+', 'Users\\\\+', '[a-zA-Z0-9_-]+|', '\\/', 'home\\/', '[a-zA-Z0-9_-]+'].join(''),
   'g'
 );
 

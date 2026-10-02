@@ -202,6 +202,16 @@ export async function runPackage(options) {
   const distDir = options.distDir || 'dist';
   const packageDir = options.packageDir || 'dist/package';
 
+  const scriptPath = path.resolve(process.cwd(), distDir, 'Script.js');
+  if (!fs.existsSync(scriptPath)) {
+    throw new Error(`Cannot package: Script.js not found in ${distDir}. Run "fleet build" first.`);
+  }
+
+  // 门禁前置：确保待发布的 Script.js 严格满足 Boa 0.22 规范与契约
+  console.log(`[fleet] Verifying Script.js against Boa 0.22 gate before packaging...`);
+  const scriptCode = fs.readFileSync(scriptPath, 'utf8');
+  await verifyScriptPipeline(scriptCode, 'Script.js in dist failed Boa compatibility gate');
+
   console.log(`[fleet] Creating deterministic release package from ${distDir} -> ${packageDir}...`);
   const result = createDeterministicPackage({ distDir, packageDir });
 

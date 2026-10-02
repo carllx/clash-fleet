@@ -91,43 +91,73 @@ export function verifyPublishedReleaseImmutability(release) {
 /**
  * 校验 Release 上已发布的资产与本地确定性 Package 清单完全一致
  *
- * @param {Array<{ name: string, digest?: string }>} releaseAssets GitHub Release 对象上的 assets 列表
- * @param {Record<string, string>} expectedChecksums 本地确定的文件哈希映射表 ({ 'Script.js': '<sha256>', ... })
- * @returns {{ passed: boolean, missing: string[], unexpected: string[], detail: string }}
+ * 保证：
+ * 1. 资产文件集合与预期清单完全一一对应（零缺失、零冗余）；
+ * 2. 若 Release Asset 携带 SHA-256 摘要 (digest/sha256)，严格比对哈希值一致性。
+ *
+ * @param {Array<{ name: string, digest?: string, sha256?: string }>} releaseAssets GitHub Release 对象上的 assets 列表
+ * @param {Record<string, string>|string[]} expectedAssets 本地确定的文件哈希映射表 ({ 'Script.js': '<sha256>', ... }) 或文件名称列表
+ * @returns {{ passed: boolean, missing: string[], unexpected: string[], corrupted: string[], detail: string }}
  */
-export function verifyReleaseAssetsParity(releaseAssets, expectedChecksums) {
+export function verifyReleaseAssetsParity(releaseAssets, expectedAssets) {
   if (!Array.isArray(releaseAssets)) {
     return {
       passed: false,
       missing: [],
       unexpected: [],
+      corrupted: [],
       detail: 'Release assets is not an array',
     };
   }
 
-  const assetNames = new Set(releaseAssets.map((a) => a.name));
-  const expectedNames = new Set(Object.keys(expectedChecksums));
+  const checksumMap = Array.isArray(expectedAssets)
+    ? Object.fromEntries(expectedAssets.map((name) => [name, null]))
+    : (expectedAssets || {});
+
+  const expectedNames = new Set(Object.keys(checksumMap));
+  const assetMap = new Map();
+  for (const asset of releaseAssets) {
+    if (asset && asset.name) {
+      assetMap.set(asset.name, asset);
+    }
+  }
 
   const missing = [];
   for (const name of expectedNames) {
-    if (!assetNames.has(name)) {
+    if (!assetMap.has(name)) {
       missing.push(name);
     }
   }
 
   const unexpected = [];
-  for (const name of assetNames) {
+  for (const name of assetMap.keys()) {
     if (!expectedNames.has(name)) {
       unexpected.push(name);
     }
   }
 
-  if (missing.length > 0 || unexpected.length > 0) {
+  const corrupted = [];
+  for (const [name, expectedHash] of Object.entries(checksumMap)) {
+    if (expectedHash && assetMap.has(name)) {
+      const asset = assetMap.get(name);
+      const actualDigest = asset.digest || asset.sha256;
+      if (actualDigest && actualDigest !== expectedHash) {
+        corrupted.push(`${name} (expected ${expectedHash}, got ${actualDigest})`);
+      }
+    }
+  }
+
+  if (missing.length > 0 || unexpected.length > 0 || corrupted.length > 0) {
+    const errorParts = [];
+    if (missing.length > 0) errorParts.push(`missing=[${missing.join(', ')}]`);
+    if (unexpected.length > 0) errorParts.push(`unexpected=[${unexpected.join(', ')}]`);
+    if (corrupted.length > 0) errorParts.push(`corrupted=[${corrupted.join(', ')}]`);
     return {
       passed: false,
       missing,
       unexpected,
-      detail: `Asset parity mismatch: missing=[${missing.join(', ')}], unexpected=[${unexpected.join(', ')}]`,
+      corrupted,
+      detail: `Asset parity mismatch: ${errorParts.join('; ')}`,
     };
   }
 
@@ -135,6 +165,7 @@ export function verifyReleaseAssetsParity(releaseAssets, expectedChecksums) {
     passed: true,
     missing: [],
     unexpected: [],
+    corrupted: [],
     detail: 'Release assets match expected manifest exactly',
   };
 }
