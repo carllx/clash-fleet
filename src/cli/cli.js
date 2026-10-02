@@ -13,6 +13,10 @@ import {
   serializeProvenanceManifest,
   assertProviderParity,
 } from '../loader/rule-providers.js';
+import {
+  createDeterministicPackage,
+  verifyPackageChecksums,
+} from '../release/packager.js';
 
 /**
  * 打印命令行帮助说明
@@ -26,6 +30,7 @@ Clash Fleet CLI - 多设备配置分发与确定性构建工具链
 
 命令:
     build      打包模块化 JavaScript 源码为 CVR 兼容的单一 Script.js 并生成 Rule Asset Provenance 清单 (强制执行 Boa 0.22 门禁)
+    package    确定性打包发布资产 (Script.js, RULE_ASSET_PROVENANCE.json, SHA256SUMS.txt) 并执行机密安全门禁
     verify     使用 Boa 0.22 门禁验证目标 Script.js 的语法与契约
 
   选项 (build):
@@ -33,6 +38,10 @@ Clash Fleet CLI - 多设备配置分发与确定性构建工具链
     --output, -o            产物输出路径 (默认: dist/Script.js)
     --providers, -p         Rule Provider 声明式文件路径 (默认: src/providers/rule-providers.yaml)
     --provenance-output     Provenance Manifest 输出路径 (默认: 与 output 同目录下的 RULE_ASSET_PROVENANCE.json)
+
+  选项 (package):
+    --dist-dir              产物来源目录 (默认: dist)
+    --package-dir           发布包输出目录 (默认: dist/package)
 
   选项 (verify):
     --input, -i             待验证脚本路径 (默认: dist/Script.js，亦支持位置参数传入)
@@ -56,6 +65,8 @@ export function parseArgs(args) {
     output: null,
     providers: null,
     provenanceOutput: null,
+    distDir: null,
+    packageDir: null,
   };
 
   for (let i = 1; i < args.length; i++) {
@@ -68,6 +79,10 @@ export function parseArgs(args) {
       parsed.providers = args[++i];
     } else if (arg === '--provenance-output') {
       parsed.provenanceOutput = args[++i];
+    } else if (arg === '--dist-dir') {
+      parsed.distDir = args[++i];
+    } else if (arg === '--package-dir') {
+      parsed.packageDir = args[++i];
     } else if (!arg.startsWith('-') && !parsed.input) {
       // 捕获首个位置参数 (例如: fleet verify dist/Script.js)
       parsed.input = arg;
@@ -179,6 +194,28 @@ export async function runBuild(options) {
 }
 
 /**
+ * 执行 package 命令 (确定性生成发布包边界构件与校验和)
+ *
+ * @param {object} options 打包选项
+ */
+export async function runPackage(options) {
+  const distDir = options.distDir || 'dist';
+  const packageDir = options.packageDir || 'dist/package';
+
+  console.log(`[fleet] Creating deterministic release package from ${distDir} -> ${packageDir}...`);
+  const result = createDeterministicPackage({ distDir, packageDir });
+
+  // 内部即刻自验校验和
+  verifyPackageChecksums(result.packageDir);
+
+  console.log(`[fleet] Deterministic release package successfully created at: ${result.packageDir}`);
+  for (const [file, hash] of Object.entries(result.checksums)) {
+    console.log(`  - ${file}: ${hash}`);
+  }
+  return result;
+}
+
+/**
  * 执行 verify 命令
  *
  * @param {object} options 验证选项
@@ -221,6 +258,9 @@ export async function runCli(rawArgs) {
   switch (parsed.command) {
     case 'build':
       await runBuild(parsed);
+      break;
+    case 'package':
+      await runPackage(parsed);
       break;
     case 'verify':
       await runVerify(parsed);

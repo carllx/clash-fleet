@@ -1,0 +1,112 @@
+name: CI & Deterministic Packaging
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, Test & Boa Compatibility Gate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [20.x, 22.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Boa 0.22 engine
+        run: npm run setup:boa
+
+      - name: Verify exact Boa 0.22 engine version
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            BOA_BIN="./bin/boa.exe"
+          else
+            BOA_BIN="./bin/boa"
+          fi
+          VERSION=$($BOA_BIN --version | tr -d '\r\n')
+          echo "Verified Boa version: $VERSION"
+          if [ "$VERSION" != "boa 0.22.0" ]; then
+            echo "Error: Incompatible Boa version '$VERSION', expected 'boa 0.22.0'"
+            exit 1
+          fi
+
+      - name: Run Lightweight Static & Lint Gate
+        run: npm run lint
+
+      - name: Run Test Suite
+        run: npm test
+
+  build-and-package:
+    name: Deterministic Build & Package Gate
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Boa 0.22 engine
+        run: npm run setup:boa
+
+      - name: Deterministic Build (with Boa & Provider Parity Gate)
+        run: npm run build
+
+      - name: Deterministic Package (with Privacy & Checksum Gate)
+        run: npm run package
+
+      - name: Probe Repository Immutable-Releases Setting (Read-Only)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Probing repository immutable-releases setting via GitHub REST API..."
+          SETTING_JSON=$(gh api -H "X-GitHub-Api-Version: 2026-03-10" repos/${{ github.repository }}/immutable-releases 2>/dev/null || echo '{"enabled": "unknown", "error": "unsupported_or_forbidden"}')
+          echo "Setting response: $SETTING_JSON"
+
+      - name: Verify Consecutive Build Reproducibility
+        shell: bash
+        run: |
+          mkdir -p .tmp/repro-dist .tmp/repro-pkg
+          node ./bin/fleet.js build --output .tmp/repro-dist/Script.js --provenance-output .tmp/repro-dist/RULE_ASSET_PROVENANCE.json
+          node ./bin/fleet.js package --dist-dir .tmp/repro-dist --package-dir .tmp/repro-pkg
+          echo "Comparing original and reproduction package hashes..."
+          diff -u dist/package/SHA256SUMS.txt .tmp/repro-pkg/SHA256SUMS.txt
+          echo "Reproducibility check passed: identical bit-for-bit checksums produced."
+
+      - name: Upload Ephemeral Release Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clash-fleet-deterministic-package
+          path: dist/package/
+          retention-days: 7
