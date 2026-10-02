@@ -47,13 +47,18 @@ test('CLI fleet build command suite', async (t) => {
   });
 
   await t.test('fleet build fails closed when BOA_PATH points to incompatible version (e.g. 0.23.0)', async () => {
-    const fakeBoa = path.join(OUTPUT_DIR, 'fake-boa');
+    const isWin = process.platform === 'win32';
+    const fakeBoa = path.join(OUTPUT_DIR, isWin ? 'fake-boa.cmd' : 'fake-boa');
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-    fs.writeFileSync(
-      fakeBoa,
-      '#!/bin/sh\necho "boa 0.23.0"\n',
-      { mode: 0o755 }
-    );
+    if (isWin) {
+      fs.writeFileSync(fakeBoa, '@echo off\r\necho boa 0.23.0\r\n');
+    } else {
+      fs.writeFileSync(
+        fakeBoa,
+        '#!/bin/sh\necho "boa 0.23.0"\n',
+        { mode: 0o755 }
+      );
+    }
 
     await assert.rejects(
       async () => {
