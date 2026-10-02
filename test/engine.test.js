@@ -114,8 +114,15 @@ describe('Modular assembly engine suite (Pure JS)', () => {
 
       const result = assembleConfig(inputConfig, 'test-profile', declarativeData);
 
-      assert.strictEqual(result.proxies, inputConfig.proxies);
-      assert.strictEqual(result['proxy-groups'], inputConfig['proxy-groups']);
+      assert.deepStrictEqual(result.proxies, inputConfig.proxies);
+      assert.ok(Array.isArray(result['proxy-groups']));
+      // 验证保留了非 Fleet 拥有的用户自定义组 PROXY
+      const preservedUserGroup = result['proxy-groups'].find((g) => g.name === 'PROXY');
+      assert.ok(preservedUserGroup);
+      assert.deepStrictEqual(preservedUserGroup.proxies, ['Node 1']);
+      // 验证生成了基线意图组
+      const defaultTier1 = result['proxy-groups'].find((g) => g.name === '🔰 节点选择');
+      assert.ok(defaultTier1);
       assert.deepStrictEqual(result.rules, [
         'RULE-SET,reject,REJECT',
         'DOMAIN-SUFFIX,local,DIRECT',
