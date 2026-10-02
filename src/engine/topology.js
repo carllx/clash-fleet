@@ -111,6 +111,9 @@ export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
       proxies: autoSelectProxies,
     });
     hasTier15 = true;
+  } else {
+    // 若因有效地区池不足 2 个而省略 Tier 1.5，标记为已裁剪，净化上层既有策略组引用
+    prunedFleetGroupNames[autoSelectGroupName] = true;
   }
 
   // 3. 构建 Tier 1 业务意图层 (🔰 节点选择, 🤖 AI 服务, 🎵 媒体服务)
@@ -126,7 +129,8 @@ export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
   tier1Proxies.push('DIRECT');
 
   // 3.2 🤖 AI 服务
-  // 优先选取 US / JP / SG 地区池；HK 兜底；无地区时严格 Fail-Closed 至 REJECT，防止凭据与敏感请求直连泄露
+  // 严格选取受支持的地区池：US / JP / SG；HK 作为可用性兜底；若均不存在则严格 Fail-Closed 至 REJECT
+  // 避免向英国(UK)等受 Gemini 403 地区风控的区域漫游导致断连，防止凭据与敏感请求直连泄露
   var aiPreferredKeys = ['🇺🇸 美国', '🇯🇵 日本', '🇸🇬 新加坡'];
   var aiProxies = [];
   for (var aiIdx = 0; aiIdx < aiPreferredKeys.length; aiIdx++) {
@@ -137,12 +141,6 @@ export function assembleTopology(proxies, regionPresets, existingProxyGroups) {
   }
   if (validTier2Names.indexOf('🇭🇰 香港') !== -1) {
     aiProxies.push('🇭🇰 香港');
-  }
-  if (aiProxies.length === 0) {
-    // 若无上述特定地区，但存在其他有效地区池，则使用其他地区
-    for (var remIdx = 0; remIdx < validTier2Names.length; remIdx++) {
-      aiProxies.push(validTier2Names[remIdx]);
-    }
   }
   if (aiProxies.length === 0) {
     aiProxies.push('REJECT');

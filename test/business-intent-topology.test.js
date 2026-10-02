@@ -106,4 +106,31 @@ test('Tier 1 Business Intent topology suite', async (t) => {
     var pass3 = assembleTopology(proxies, regionPresets, pass2);
     assert.deepEqual(pass2, pass3, 'Multiple passes must produce identical groups');
   });
+
+  await t.test('🤖 AI 服务 fails closed to REJECT when only unsupported regions (e.g. UK, TW) exist', () => {
+    var proxiesOnlyUK = [
+      { name: 'UK-01', type: 'ss' },
+      { name: 'TW-01', type: 'ss' },
+    ];
+    var groups = assembleTopology(proxiesOnlyUK, regionPresets, []);
+    var aiGroup = groups.find((g) => g.name === '🤖 AI 服务');
+    assert.ok(aiGroup);
+    assert.deepEqual(aiGroup.proxies, ['REJECT'], 'Must fail closed to REJECT to prevent UK 403 / geographic violation');
+  });
+
+  await t.test('Tier 1.5 omission cleanses autoSelectGroupName from user groups to prevent dangling references', () => {
+    var proxiesOnlyHK = [
+      { name: 'HK-01', type: 'ss' },
+    ];
+    var userGroup = {
+      name: 'User-Selected-Group',
+      type: 'select',
+      proxies: ['DIRECT', '🚀 自动优选', '🇭🇰 香港'],
+    };
+    var groups = assembleTopology(proxiesOnlyHK, regionPresets, [userGroup]);
+    var custom = groups.find((g) => g.name === 'User-Selected-Group');
+    assert.ok(custom);
+    assert.deepEqual(custom.proxies, ['DIRECT', '🇭🇰 香港'], '🚀 自动优选 must be cleanly pruned from user groups when omitted');
+  });
 });
+
