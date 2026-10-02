@@ -8,6 +8,8 @@ import {
   STATUS_CONTAINS_DYNAMIC,
   CLASSIFICATION_PINNED,
   CLASSIFICATION_DYNAMIC,
+  ROLLBACK_SEMANTICS_PINNED,
+  ROLLBACK_SEMANTICS_DYNAMIC,
 } from '../src/loader/rule-providers.js';
 
 describe('Rule Provider declarative schema & provenance suite', () => {
@@ -204,7 +206,7 @@ providers:
     assert.equal(manifest.providers[0].id, 'a-provider');
     assert.equal(manifest.providers[0].classification, CLASSIFICATION_PINNED);
     assert.equal(manifest.providers[0].revision, 'sha-a');
-    assert.equal(manifest.providers[0].rollback_semantics, 'exact external revision preserved; reproducible rule-asset rollback');
+    assert.equal(manifest.providers[0].rollback_semantics, ROLLBACK_SEMANTICS_PINNED);
 
     assert.equal(manifest.providers[1].id, 'z-provider');
     assert.equal(manifest.providers[1].classification, CLASSIFICATION_PINNED);
@@ -238,7 +240,7 @@ providers:
     const dynEntry = manifest.providers.find((p) => p.id === 'dyn-provider');
     assert.ok(dynEntry);
     assert.equal(dynEntry.classification, CLASSIFICATION_DYNAMIC);
-    assert.equal(dynEntry.rollback_semantics, 'partial / non-fully-reproducible');
+    assert.equal(dynEntry.rollback_semantics, ROLLBACK_SEMANTICS_DYNAMIC);
     assert.equal(dynEntry.revision, null);
   });
 });

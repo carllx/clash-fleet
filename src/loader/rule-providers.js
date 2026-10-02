@@ -14,6 +14,10 @@ export const STATUS_CONTAINS_DYNAMIC = 'CONTAINS_DYNAMIC_EXTERNAL_DEPENDENCY';
 export const CLASSIFICATION_PINNED = 'Pinned Rule Asset';
 export const CLASSIFICATION_DYNAMIC = 'Dynamic External Dependency';
 
+export const ROLLBACK_SEMANTICS_PINNED =
+  'exact external revision preserved; reproducible rule-asset rollback';
+export const ROLLBACK_SEMANTICS_DYNAMIC = 'partial / non-fully-reproducible';
+
 export const STRATEGY_PINNED = 'pinned';
 export const STRATEGY_DYNAMIC = 'dynamic';
 
@@ -162,8 +166,8 @@ export function generateProvenanceManifest(providers) {
       strategy: p.source.strategy,
       revision: isPinned ? p.source.revision : null,
       rollback_semantics: isPinned
-        ? 'exact external revision preserved; reproducible rule-asset rollback'
-        : 'partial / non-fully-reproducible',
+        ? ROLLBACK_SEMANTICS_PINNED
+        : ROLLBACK_SEMANTICS_DYNAMIC,
     };
   });
 
