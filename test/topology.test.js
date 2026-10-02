@@ -62,6 +62,7 @@ test('Policy topology assembly suite (Three-Tier Policy Topology)', async (t) =>
     var tier15 = groups.find((g) => g.name === '🚀 自动优选');
 
     assert.ok(tier15, 'Tier 1.5 🚀 自动优选 should exist');
+    assert.equal(tier15.type, 'fallback');
     assert.deepEqual(tier15.proxies, ['🇭🇰 香港', '🇯🇵 日本']);
 
     // 严格检查：不能包含任何物理节点名称
@@ -106,12 +107,12 @@ test('Policy topology assembly suite (Three-Tier Policy Topology)', async (t) =>
     assert.ok(!tier1.proxies.includes('🇺🇸 美国'), 'Must not reference pruned region');
   });
 
-  await t.test('idempotency: multiple passes produce stable groups and preserve unrelated user groups', () => {
+  await t.test('idempotency: multiple passes produce stable groups and preserve unrelated user groups with cleaned references', () => {
     var proxies = [{ name: '🇭🇰 HK-01', type: 'ss' }];
     var userGroup = {
       name: 'My Custom Manual Group',
       type: 'select',
-      proxies: ['DIRECT'],
+      proxies: ['DIRECT', '🇹🇼 台湾'], // 包含一个在本次运行中被裁剪的空地区
     };
 
     var pass1 = assembleTopology(proxies, regionPresets, [userGroup]);
@@ -120,9 +121,10 @@ test('Policy topology assembly suite (Three-Tier Policy Topology)', async (t) =>
     // 运行两次应完全一致
     assert.deepEqual(pass1, pass2);
 
-    // 用户自定义组必须得到保留
+    // 用户自定义组必须得到保留，且悬空引用 '🇹🇼 台湾' 被清洗
     var preservedUserGroup = pass2.find((g) => g.name === 'My Custom Manual Group');
     assert.ok(preservedUserGroup);
+    assert.deepEqual(preservedUserGroup.proxies, ['DIRECT']);
 
     // Fleet 拥有的组不能重复出现
     var autoGroups = pass2.filter((g) => g.name === '🚀 自动优选');

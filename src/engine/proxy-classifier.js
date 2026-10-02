@@ -19,11 +19,39 @@ export function normalizeProxyName(rawName) {
     return '';
   }
 
-  // 1. 去除多余前后空格与控制字符
-  var label = rawName.trim();
+  // 去除多余首尾空白与控制字符，得到用于正则匹配的派生标签
+  return rawName.trim();
+}
 
-  // 2. 规范化连字符与分隔符，保持主体字符便于正则匹配
-  return label;
+/**
+ * 编译地区预置字典中的正则表达式
+ *
+ * @param {object} regionPresets 声明式地区字典
+ * @returns {Array<{ key: string, regex: RegExp }>} 预编译正则列表
+ */
+function compileRegionMatchers(regionPresets) {
+  var matchers = [];
+  if (!regionPresets || typeof regionPresets !== 'object') {
+    return matchers;
+  }
+
+  var keys = Object.keys(regionPresets);
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var def = regionPresets[key];
+    if (def && typeof def.pattern === 'string') {
+      try {
+        matchers.push({
+          key: key,
+          regex: new RegExp(def.pattern, 'i'),
+        });
+      } catch (e) {
+        // 忽略非法正则，保持运行稳健
+      }
+    }
+  }
+
+  return matchers;
 }
 
 /**
@@ -38,29 +66,16 @@ export function classifyProxy(proxy, regionPresets) {
     return null;
   }
 
-  if (!regionPresets || typeof regionPresets !== 'object') {
-    return null;
-  }
-
   var normalizedLabel = normalizeProxyName(proxy.name);
   if (!normalizedLabel) {
     return null;
   }
 
-  // 遍历预置地区正则
-  var regionKeys = Object.keys(regionPresets);
-  for (var i = 0; i < regionKeys.length; i++) {
-    var key = regionKeys[i];
-    var regionDef = regionPresets[key];
-    if (regionDef && regionDef.pattern) {
-      try {
-        var re = new RegExp(regionDef.pattern, 'i');
-        if (re.test(normalizedLabel) || re.test(proxy.name)) {
-          return key;
-        }
-      } catch (e) {
-        // 正则表达式异常时安全跳过当前规则
-      }
+  var matchers = compileRegionMatchers(regionPresets);
+  for (var i = 0; i < matchers.length; i++) {
+    var matcher = matchers[i];
+    if (matcher.regex.test(normalizedLabel) || matcher.regex.test(proxy.name)) {
+      return matcher.key;
     }
   }
 
@@ -68,7 +83,7 @@ export function classifyProxy(proxy, regionPresets) {
 }
 
 /**
- * 批量对代理节点集合执行派生分类
+ * 批量对代理节点集合执行派生分类 (采用单次预编译正则，提升匹配效率)
  *
  * @param {Array} proxies 代理节点列表
  * @param {object} regionPresets 地区预置字典
@@ -92,15 +107,30 @@ export function classifyProxies(proxies, regionPresets) {
     };
   }
 
+  // 单次预编译全部地区正则，避免在遍历 proxy 时重复创建 RegExp
+  var matchers = compileRegionMatchers(regionPresets);
+
   for (var i = 0; i < proxies.length; i++) {
     var proxy = proxies[i];
-    if (!proxy || typeof proxy !== 'object') {
+    if (!proxy || typeof proxy !== 'object' || typeof proxy.name !== 'string') {
       continue;
     }
 
-    var matchedRegion = classifyProxy(proxy, regionPresets);
-    if (matchedRegion && buckets[matchedRegion]) {
-      buckets[matchedRegion].push(proxy);
+    var normalizedLabel = normalizeProxyName(proxy.name);
+    var matchedKey = null;
+
+    if (normalizedLabel) {
+      for (var m = 0; m < matchers.length; m++) {
+        var matcher = matchers[m];
+        if (matcher.regex.test(normalizedLabel) || matcher.regex.test(proxy.name)) {
+          matchedKey = matcher.key;
+          break;
+        }
+      }
+    }
+
+    if (matchedKey && buckets[matchedKey]) {
+      buckets[matchedKey].push(proxy);
     } else {
       unclassified.push(proxy);
     }

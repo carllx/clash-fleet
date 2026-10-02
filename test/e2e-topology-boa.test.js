@@ -129,7 +129,7 @@ test('Complex sanitized fixture end-to-end Boa 0.22 verification suite', async (
       {
         name: 'Manual Existing Group',
         type: 'select',
-        proxies: ['Special Custom Tunnel Node'],
+        proxies: ['Special Custom Tunnel Node', '🇹🇼 台湾'],
       },
     ],
     rules: ['MATCH,Manual Existing Group'],
@@ -193,7 +193,7 @@ test('Complex sanitized fixture end-to-end Boa 0.22 verification suite', async (
   await t.test('Tier 1.5 Hard Invariant: contains ONLY Tier 2 group names, NO physical proxies', () => {
     const autoGroup = result1['proxy-groups'].find((g) => g.name === '🚀 自动优选');
     assert.ok(autoGroup);
-    assert.strictEqual(autoGroup.type, 'url-test');
+    assert.strictEqual(autoGroup.type, 'fallback');
 
     const expectedTier2 = ['🇭🇰 香港', '🇯🇵 日本', '🇺🇸 美国', '🇸🇬 新加坡'];
     assert.deepStrictEqual(autoGroup.proxies, expectedTier2);
@@ -232,7 +232,7 @@ test('Complex sanitized fixture end-to-end Boa 0.22 verification suite', async (
     }
   });
 
-  await t.test('Referential Integrity: preserves pre-existing user groups and references', () => {
+  await t.test('Referential Integrity: preserves pre-existing user groups and cleans references to pruned regions', () => {
     const manualGroup = result1['proxy-groups'].find((g) => g.name === 'Manual Existing Group');
     assert.ok(manualGroup);
     assert.deepStrictEqual(manualGroup.proxies, ['Special Custom Tunnel Node']);

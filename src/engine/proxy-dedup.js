@@ -82,6 +82,27 @@ function isDeepEqual(valA, valB) {
  * @param {object} proxyA 第一个节点对象
  * @param {object} proxyB 第二个节点对象
  * @returns {boolean} 是否完全等价
+/**
+ * 辅助函数：收集对象中除 'name' 外的所有自有属性键
+ *
+ * @param {object} obj 目标对象
+ * @param {object} targetMap 收集字典
+ */
+function collectKeysExceptName(obj, targetMap) {
+  var keys = Object.keys(obj);
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i] !== 'name') {
+      targetMap[keys[i]] = true;
+    }
+  }
+}
+
+/**
+ * 保守断言两个物理代理节点是否具备完全相同的运行态语义 (除 name 外)
+ *
+ * @param {object} proxyA 第一个节点对象
+ * @param {object} proxyB 第二个节点对象
+ * @returns {boolean} 是否完全等价
  */
 export function areProxiesEquivalent(proxyA, proxyB) {
   if (!proxyA || typeof proxyA !== 'object' || !proxyB || typeof proxyB !== 'object') {
@@ -93,21 +114,10 @@ export function areProxiesEquivalent(proxyA, proxyB) {
     return false;
   }
 
-  // 收集除 'name' 外所有字段名
-  var keysA = Object.keys(proxyA);
-  var keysB = Object.keys(proxyB);
-
+  // 收集两节点除 'name' 外的所有配置属性名
   var allKeysMap = {};
-  for (var i = 0; i < keysA.length; i++) {
-    if (keysA[i] !== 'name') {
-      allKeysMap[keysA[i]] = true;
-    }
-  }
-  for (var j = 0; j < keysB.length; j++) {
-    if (keysB[j] !== 'name') {
-      allKeysMap[keysB[j]] = true;
-    }
-  }
+  collectKeysExceptName(proxyA, allKeysMap);
+  collectKeysExceptName(proxyB, allKeysMap);
 
   var allKeys = Object.keys(allKeysMap);
   for (var k = 0; k < allKeys.length; k++) {
