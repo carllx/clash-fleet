@@ -16,6 +16,7 @@ import {
 import {
   GitHubReleaseSource,
   FixtureReleaseSource,
+  assertAssetBufferDigest,
 } from '../src/deploy/release-source.js';
 import {
   executeDeploymentTransaction,
@@ -259,6 +260,34 @@ test('Deployment Transaction Suite (Discover -> Fetch -> Checksum -> Boa Preflig
       await assert.rejects(
         () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
         /Required build artifacts fail authoritative digest check|missing authoritative digest/i
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when required asset has synthetic sha256 field but missing authoritative digest', async () => {
+      // 构造 required asset: digest 不存在，但存在表面正确的 synthetic sha256 字段
+      // 证明 asset.sha256 绝对不能替代 GitHub REST authoritative asset.digest
+      const fixture = createValidCandidateArtifacts();
+      const assetsWithSyntheticSha256 = fixture.releaseObject.assets.map((a) =>
+        a.name === 'Script.js' ? { name: a.name, sha256: `sha256:${fixture.scriptHash}` } : a
+      );
+      const source = new FixtureReleaseSource({
+        repoSetting: { enabled: true },
+        releaseObject: { ...fixture.releaseObject, assets: assetsWithSyntheticSha256 },
+        files: fixture.files,
+      });
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Required build artifacts fail authoritative digest check|missing authoritative digest/i
+      );
+
+      // 同时验证底层的 assertAssetBufferDigest 也严格拒绝无 digest 的 asset
+      assert.throws(
+        () => assertAssetBufferDigest({ name: 'Script.js', sha256: `sha256:${fixture.scriptHash}` }, Buffer.from('test')),
+        /missing authoritative release digest/i
       );
 
       assert.equal(computeFileSha256(targetScript), originalHash);

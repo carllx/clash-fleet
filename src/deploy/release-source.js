@@ -50,7 +50,7 @@ export function validateReleaseContract(repoSetting, releaseObject) {
       missingAssets.push(requiredName);
       continue;
     }
-    const rawDigest = asset.digest || asset.sha256;
+    const rawDigest = asset.digest;
     if (!rawDigest) {
       invalidDigestAssets.push(`${requiredName} (missing authoritative digest)`);
       continue;
@@ -234,7 +234,7 @@ export function assertAssetBufferDigest(asset, buffer) {
     throw new Error('Asset object is missing or invalid');
   }
 
-  const rawDigest = asset.digest || asset.sha256;
+  const rawDigest = asset.digest;
   if (!rawDigest) {
     throw new Error(
       `Asset "${asset.name}" is missing authoritative release digest (expected sha256:<64-hex>)`
