@@ -43,15 +43,33 @@ export function validateReleaseContract(repoSetting, releaseObject) {
   }
 
   const missingAssets = [];
+  const invalidDigestAssets = [];
   for (const requiredName of REQUIRED_RELEASE_ASSETS) {
-    if (!assetMap.has(requiredName)) {
+    const asset = assetMap.get(requiredName);
+    if (!asset) {
       missingAssets.push(requiredName);
+      continue;
+    }
+    const rawDigest = asset.digest || asset.sha256;
+    if (!rawDigest) {
+      invalidDigestAssets.push(`${requiredName} (missing authoritative digest)`);
+      continue;
+    }
+    const parsed = parseAndValidateSha256Digest(rawDigest);
+    if (!parsed.valid) {
+      invalidDigestAssets.push(`${requiredName} (${parsed.error})`);
     }
   }
 
   if (missingAssets.length > 0) {
     throw new Error(
       `[release-source] Missing required build artifacts in release: [${missingAssets.join(', ')}]`
+    );
+  }
+
+  if (invalidDigestAssets.length > 0) {
+    throw new Error(
+      `[release-source] Required build artifacts fail authoritative digest check: [${invalidDigestAssets.join(', ')}]`
     );
   }
 
@@ -212,8 +230,16 @@ export class GitHubReleaseSource {
  * @param {Buffer} buffer 下载的二进制内容
  */
 export function assertAssetBufferDigest(asset, buffer) {
+  if (!asset || typeof asset !== 'object') {
+    throw new Error('Asset object is missing or invalid');
+  }
+
   const rawDigest = asset.digest || asset.sha256;
-  if (!rawDigest) return;
+  if (!rawDigest) {
+    throw new Error(
+      `Asset "${asset.name}" is missing authoritative release digest (expected sha256:<64-hex>)`
+    );
+  }
 
   const parsedDigest = parseAndValidateSha256Digest(rawDigest);
   if (!parsedDigest.valid) {

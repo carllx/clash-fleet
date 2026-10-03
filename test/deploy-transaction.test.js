@@ -244,6 +244,66 @@ test('Deployment Transaction Suite (Discover -> Fetch -> Checksum -> Boa Preflig
       assert.equal(computeFileSha256(targetScript), originalHash);
       assert.equal(fs.existsSync(`${targetScript}.bak`), false);
     });
+
+    await st.test('fails closed when required asset is missing authoritative digest in release', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const assetsWithoutDigest = fixture.releaseObject.assets.map((a) =>
+        a.name === 'Script.js' ? { name: a.name } : a
+      );
+      const source = new FixtureReleaseSource({
+        repoSetting: { enabled: true },
+        releaseObject: { ...fixture.releaseObject, assets: assetsWithoutDigest },
+        files: fixture.files,
+      });
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Required build artifacts fail authoritative digest check|missing authoritative digest/i
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when required asset has malformed digest in release', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const assetsWithBadDigest = fixture.releaseObject.assets.map((a) =>
+        a.name === 'Script.js' ? { ...a, digest: 'sha256:not-a-valid-hex' } : a
+      );
+      const source = new FixtureReleaseSource({
+        repoSetting: { enabled: true },
+        releaseObject: { ...fixture.releaseObject, assets: assetsWithBadDigest },
+        files: fixture.files,
+      });
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Malformed SHA-256 digest/i
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when required asset has unsupported digest algorithm', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const assetsWithSha512 = fixture.releaseObject.assets.map((a) =>
+        a.name === 'Script.js' ? { ...a, digest: `sha512:${'a'.repeat(128)}` } : a
+      );
+      const source = new FixtureReleaseSource({
+        repoSetting: { enabled: true },
+        releaseObject: { ...fixture.releaseObject, assets: assetsWithSha512 },
+        files: fixture.files,
+      });
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Unsupported digest algorithm/i
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
   });
 
   await t.test('4. Checksum verification failures leave target unchanged and backup untouched', async (st) => {
@@ -252,6 +312,22 @@ test('Deployment Transaction Suite (Discover -> Fetch -> Checksum -> Boa Preflig
     const originalContent = 'function main(config) { return config; }\n';
     fs.writeFileSync(targetScript, originalContent, 'utf8');
     const originalHash = computeFileSha256(targetScript);
+
+    /**
+     * 辅助函数：构造特定 SHA256SUMS.txt 内容及其正确匹配的 release fixture
+     */
+    function createFixtureWithCustomSums(customSumsContent) {
+      const fixture = createValidCandidateArtifacts();
+      const sumsHash = crypto.createHash('sha256').update(Buffer.from(customSumsContent, 'utf8')).digest('hex');
+      const assets = fixture.releaseObject.assets.map((a) =>
+        a.name === 'SHA256SUMS.txt' ? { ...a, digest: `sha256:${sumsHash}` } : a
+      );
+      return new FixtureReleaseSource({
+        repoSetting: fixture.repoSetting,
+        releaseObject: { ...fixture.releaseObject, assets },
+        files: { ...fixture.files, 'SHA256SUMS.txt': customSumsContent },
+      });
+    }
 
     await st.test('fails closed when asset digest in release mismatches downloaded content', async () => {
       const fixture = createValidCandidateArtifacts();
@@ -271,20 +347,24 @@ test('Deployment Transaction Suite (Discover -> Fetch -> Checksum -> Boa Preflig
       assert.equal(fs.existsSync(`${targetScript}.bak`), false);
     });
 
-    await st.test('fails closed when SHA256SUMS.txt is empty', async () => {
+    await st.test('fails closed when downloaded Script.js matches asset digest but fails SHA256SUMS mismatch', async () => {
+      // 保持所有文件的 asset.digest 严格合法匹配其实际下载内容；但在 SHA256SUMS.txt 中给出错误期望值
       const fixture = createValidCandidateArtifacts();
-      const emptySums = '';
-      const emptyHash = crypto.createHash('sha256').update(Buffer.from(emptySums)).digest('hex');
-      const files = { ...fixture.files, 'SHA256SUMS.txt': emptySums };
-      const assets = fixture.releaseObject.assets.map((a) =>
-        a.name === 'SHA256SUMS.txt' ? { ...a, digest: `sha256:${emptyHash}` } : a
+      const wrongHash = '0000000000000000000000000000000000000000000000000000000000000000';
+      const customSums = `${fixture.provHash}  RULE_ASSET_PROVENANCE.json\n${wrongHash}  Script.js\n`;
+      const source = createFixtureWithCustomSums(customSums);
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Checksum mismatch for Script\.js/
       );
 
-      const source = new FixtureReleaseSource({
-        repoSetting: fixture.repoSetting,
-        releaseObject: { ...fixture.releaseObject, assets },
-        files,
-      });
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when SHA256SUMS.txt is empty', async () => {
+      const source = createFixtureWithCustomSums('');
 
       await assert.rejects(
         () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
@@ -296,19 +376,7 @@ test('Deployment Transaction Suite (Discover -> Fetch -> Checksum -> Boa Preflig
     });
 
     await st.test('fails closed on malformed SHA256SUMS.txt entry', async () => {
-      const fixture = createValidCandidateArtifacts();
-      const malformedSums = 'invalid-hash-entry\n';
-      const malformedHash = crypto.createHash('sha256').update(Buffer.from(malformedSums)).digest('hex');
-      const files = { ...fixture.files, 'SHA256SUMS.txt': malformedSums };
-      const assets = fixture.releaseObject.assets.map((a) =>
-        a.name === 'SHA256SUMS.txt' ? { ...a, digest: `sha256:${malformedHash}` } : a
-      );
-
-      const source = new FixtureReleaseSource({
-        repoSetting: fixture.repoSetting,
-        releaseObject: { ...fixture.releaseObject, assets },
-        files,
-      });
+      const source = createFixtureWithCustomSums('invalid-hash-entry\n');
 
       await assert.rejects(
         () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
@@ -319,21 +387,99 @@ test('Deployment Transaction Suite (Discover -> Fetch -> Checksum -> Boa Preflig
       assert.equal(fs.existsSync(`${targetScript}.bak`), false);
     });
 
-    await st.test('fails closed when downloaded Script.js hash mismatches SHA256SUMS', async () => {
+    await st.test('fails closed when SHA256SUMS contains relative path traversal (../outside-file)', async () => {
       const fixture = createValidCandidateArtifacts();
-      // 篡改 Script.js 内容
-      const files = { ...fixture.files, 'Script.js': 'function main() { /* corrupted */ }\n' };
-      // 移除 releaseObject 上的 digest 约束以单独测试 SHA256SUMS 比对阶段
-      const assetsWithoutDigest = fixture.releaseObject.assets.map((a) => ({ name: a.name }));
-      const source = new FixtureReleaseSource({
-        repoSetting: fixture.repoSetting,
-        releaseObject: { ...fixture.releaseObject, assets: assetsWithoutDigest },
-        files,
-      });
+      const customSums = `${fixture.provHash}  RULE_ASSET_PROVENANCE.json\n${fixture.scriptHash}  ../outside-file\n`;
+      const source = createFixtureWithCustomSums(customSums);
 
       await assert.rejects(
         () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
-        /Checksum mismatch for Script\.js/
+        /Unsafe path in SHA256SUMS\.txt/
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when SHA256SUMS contains absolute path', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const customSums = `${fixture.provHash}  RULE_ASSET_PROVENANCE.json\n${fixture.scriptHash}  /etc/passwd\n`;
+      const source = createFixtureWithCustomSums(customSums);
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Unsafe path in SHA256SUMS\.txt/
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when SHA256SUMS contains path separators', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const customSums = `${fixture.provHash}  RULE_ASSET_PROVENANCE.json\n${fixture.scriptHash}  sub/Script.js\n`;
+      const source = createFixtureWithCustomSums(customSums);
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Unsafe path in SHA256SUMS\.txt/
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when SHA256SUMS contains duplicate entries', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const customSums = `${fixture.provHash}  RULE_ASSET_PROVENANCE.json\n${fixture.scriptHash}  Script.js\n${fixture.scriptHash}  Script.js\n`;
+      const source = createFixtureWithCustomSums(customSums);
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Duplicate entry in SHA256SUMS\.txt/
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when SHA256SUMS contains unexpected entries', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const dummyHash = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+      const customSums = `${fixture.provHash}  RULE_ASSET_PROVENANCE.json\n${fixture.scriptHash}  Script.js\n${dummyHash}  extra.txt\n`;
+      const source = createFixtureWithCustomSums(customSums);
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Unexpected entry in SHA256SUMS\.txt: "extra\.txt"/
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when SHA256SUMS misses Script.js', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const customSums = `${fixture.provHash}  RULE_ASSET_PROVENANCE.json\n`;
+      const source = createFixtureWithCustomSums(customSums);
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Missing required entry in SHA256SUMS\.txt: "Script\.js"/
+      );
+
+      assert.equal(computeFileSha256(targetScript), originalHash);
+      assert.equal(fs.existsSync(`${targetScript}.bak`), false);
+    });
+
+    await st.test('fails closed when SHA256SUMS misses RULE_ASSET_PROVENANCE.json', async () => {
+      const fixture = createValidCandidateArtifacts();
+      const customSums = `${fixture.scriptHash}  Script.js\n`;
+      const source = createFixtureWithCustomSums(customSums);
+
+      await assert.rejects(
+        () => executeDeploymentTransaction({ version: 'v1.2.3', target: targetScript, source }),
+        /Missing required entry in SHA256SUMS\.txt: "RULE_ASSET_PROVENANCE\.json"/
       );
 
       assert.equal(computeFileSha256(targetScript), originalHash);

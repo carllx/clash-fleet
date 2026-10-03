@@ -18,8 +18,21 @@ import {
   computeFileSha256,
 } from './atomic-file.js';
 
+export const CANONICAL_CHECKSUM_ASSETS = [
+  'RULE_ASSET_PROVENANCE.json',
+  'Script.js',
+];
+
 /**
- * 严格解析并校验下载的 SHA256SUMS.txt
+ * 严格解析并校验下载的 SHA256SUMS.txt (Fail-Closed)
+ *
+ * 安全约束与不变式：
+ * 1. 拒绝空清单；
+ * 2. 严格 basename-only 文件名；禁止绝对路径、路径分隔符 (/ 与 \)、. 与 .. 路径穿越；
+ * 3. 拒绝重复条目 (duplicate filename)；
+ * 4. 拒绝意外条目 (unexpected entry)；
+ * 5. 严格要求且仅要求覆盖 Canonical #6 交付物 (Script.js 与 RULE_ASSET_PROVENANCE.json)；
+ * 6. 每一项计算 SHA-256 并强比对，不匹配立即中断。
  *
  * @param {string} stagingDir 隔离暂存目录
  * @returns {Record<string, string>} 验证通过的文件名 -> SHA-256 哈希映射
@@ -48,24 +61,42 @@ export function verifyDownloadedChecksums(stagingDir) {
     if (!/^[a-fA-F0-9]{64}$/.test(expectedHash)) {
       throw new Error(`Malformed SHA-256 hex in SHA256SUMS: "${expectedHash}"`);
     }
+
+    // 1. 路径穿越与绝对路径安全性防御 (Fail-Closed)
+    if (filename.includes('/') || filename.includes('\\')) {
+      throw new Error(`Unsafe path in SHA256SUMS.txt: "${filename}" (path separators not allowed)`);
+    }
+    if (path.isAbsolute(filename) || /^[a-zA-Z]:/.test(filename)) {
+      throw new Error(`Unsafe path in SHA256SUMS.txt: "${filename}" (absolute paths not allowed)`);
+    }
+    if (filename === '.' || filename === '..' || filename.startsWith('.')) {
+      throw new Error(`Unsafe path in SHA256SUMS.txt: "${filename}" (relative traversal or hidden file)`);
+    }
+    if (path.basename(filename) !== filename) {
+      throw new Error(`Unsafe path in SHA256SUMS.txt: "${filename}" (must be basename-only)`);
+    }
+
+    // 2. 重复条目防范
+    if (filename in checksumMap) {
+      throw new Error(`Duplicate entry in SHA256SUMS.txt: "${filename}"`);
+    }
+
+    // 3. 严格限定仅允许 Canonical #6 构建构件
+    if (!CANONICAL_CHECKSUM_ASSETS.includes(filename)) {
+      throw new Error(`Unexpected entry in SHA256SUMS.txt: "${filename}"`);
+    }
+
     checksumMap[filename] = expectedHash.toLowerCase();
   }
 
-  // 必须至少包含关键交付构件
-  const missingInSums = [];
-  for (const req of REQUIRED_RELEASE_ASSETS) {
-    if (req !== 'SHA256SUMS.txt' && !checksumMap[req]) {
-      missingInSums.push(req);
+  // 4. 确保所有必需构件完整且无缺失
+  for (const req of CANONICAL_CHECKSUM_ASSETS) {
+    if (!checksumMap[req]) {
+      throw new Error(`Missing required entry in SHA256SUMS.txt: "${req}"`);
     }
   }
 
-  if (missingInSums.length > 0) {
-    throw new Error(
-      `SHA256SUMS.txt does not cover required build artifacts: [${missingInSums.join(', ')}]`
-    );
-  }
-
-  // 逐一校验对应文件哈希严格匹配
+  // 5. 逐一校验对应文件哈希严格匹配
   for (const [filename, expectedHash] of Object.entries(checksumMap)) {
     const filePath = path.join(stagingDir, filename);
     if (!fs.existsSync(filePath)) {
