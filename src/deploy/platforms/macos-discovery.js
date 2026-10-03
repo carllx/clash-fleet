@@ -203,15 +203,13 @@ export function detectMacosTopology(processes) {
   }
 
   // 4. 判断 Service 托管模式
-  // 特征 A: 存在 clash-verge-service 进程
-  // 特征 B: verge-mihomo 进程的命令行包含 clash-verge-service 运行时路径或 unix-socket
-  // 特征 C: verge-mihomo 进程为 root 权限且 ppid 指向 service 或由 launchd 托管
+  // 必须满足真实的托管关联 (Hosting Relation):
+  // 强判定: 存在 clash-verge-service 进程，且 (mihomo 的 PPID 指向 service.pid 或 命令行明确包含 clash-verge-service 托管特征)
   const isServiceHosted = (
     serviceProc !== null
     && (
-      mihomoProc.command.includes('clash-verge-service')
-      || (serviceProc && mihomoProc.ppid === serviceProc.pid)
-      || (mihomoProc.user === 'root' && serviceProc.user === 'root')
+      mihomoProc.ppid === serviceProc.pid
+      || mihomoProc.command.includes('clash-verge-service')
     )
   );
 

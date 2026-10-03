@@ -9,6 +9,7 @@ import {
 } from '../src/deploy/platforms/macos-discovery.js';
 import {
   executeMacosLifecycleReload,
+  buildDefaultLaunchArgs,
 } from '../src/deploy/platforms/macos-trigger.js';
 import {
   MacOSPlatformAdapter,
@@ -89,6 +90,36 @@ test('macOS Platform Adapter Suite (Discovery, Topology, Lifecycle Trigger & Ste
     assert.equal(result.serviceProcess.pid, 1002);
   });
 
+  await t.test('3.1 Dynamic Topology Detection: unrelated root helper and root mihomo fails closed as AMBIGUOUS', () => {
+    // helper 是 root，mihomo 也是 root，但无 PPID 关联，且命令行无 service runtime/socket 路径
+    // 必须 Fail-Closed，绝不能仅凭双方是 root 就误判为 SERVICE
+    const unrelatedRootProcs = [
+      {
+        pid: 1001,
+        ppid: 1,
+        user: 'testuser',
+        command: '/Applications/Clash Verge.app/Contents/MacOS/clash-verge',
+      },
+      {
+        pid: 1002,
+        ppid: 1,
+        user: 'root',
+        command: '/Library/PrivilegedHelperTools/io.github.clash-verge-rev.clash-verge-rev.service.bundle/Contents/MacOS/clash-verge-service',
+      },
+      {
+        pid: 1003,
+        ppid: 9999, // 非 1002
+        user: 'root',
+        command: '/usr/local/bin/verge-mihomo -d /var/empty/config.yaml', // 无 clash-verge-service 路径
+      },
+    ];
+
+    const result = detectMacosTopology(unrelatedRootProcs);
+    assert.equal(result.status, 'AMBIGUOUS');
+    assert.equal(result.passed, false);
+    assert.match(result.detail, /Ambiguous process topology/);
+  });
+
   await t.test('4. Dynamic Topology Detection: Sidecar mode', () => {
     const sidecarProcs = [
       {
@@ -154,10 +185,12 @@ test('macOS Platform Adapter Suite (Discovery, Topology, Lifecycle Trigger & Ste
     // 状态流转模拟:
     // 第一次扫描 (旧进程存活)
     // 信号发送后第二次扫描 (旧进程已退出)
-    // 启动后第三次扫描 (新进程出现)
+    // 启动后第三次扫描 (新候选进程出现)
+    // 稳定性确认第四次扫描 (新进程持续稳定存活)
     const procStates = [
       [{ pid: 6001, ppid: 1, user: 'u', command: 'clash-verge' }],
       [],
+      [{ pid: 6002, ppid: 1, user: 'u', command: 'clash-verge' }],
       [{ pid: 6002, ppid: 1, user: 'u', command: 'clash-verge' }],
     ];
 
@@ -189,6 +222,21 @@ test('macOS Platform Adapter Suite (Discovery, Topology, Lifecycle Trigger & Ste
     assert.equal(evidence.newPid, 6002);
     assert.equal(evidence.zeroDowntimeClaimed, false);
     assert.equal(evidence.continuityReport, 'CONTROLLED_SECONDS_LEVEL_TRANSITION');
+  });
+
+  await t.test('6.1 Default launch command passes exact argv [-a, appName] without --hidden', async () => {
+    // 验证 buildDefaultLaunchArgs 严格遵循历史实证路径 open -a <appName>，零未经实证的附加参数
+    const defaultLaunch = buildDefaultLaunchArgs('Clash Verge');
+    assert.deepEqual(defaultLaunch, {
+      command: 'open',
+      args: ['-a', 'Clash Verge'],
+    });
+
+    const customLaunch = buildDefaultLaunchArgs('CustomApp');
+    assert.deepEqual(customLaunch, {
+      command: 'open',
+      args: ['-a', 'CustomApp'],
+    });
   });
 
   await t.test('7. Controlled Lifecycle Trigger: termination timeout fail-closed', async () => {
@@ -226,7 +274,33 @@ test('macOS Platform Adapter Suite (Discovery, Topology, Lifecycle Trigger & Ste
           scanFn: async () => (exited ? [] : [{ pid: 8001, ppid: 1, user: 'u', command: 'clash-verge' }]),
           sleepFn: async (ms) => new Promise((r) => setTimeout(r, ms)),
         }),
-      /did not become ready within bounded timeout/
+      /did not become ready and stable within bounded timeout/
+    );
+  });
+
+  await t.test('8.1 Controlled Lifecycle Trigger: transient new PID fails closed during stabilization confirmation', async () => {
+    // 模拟瞬时假阳性：候选新 PID 8002 仅出现了一次轮询，在随后的 stabilization 确认中立即退出
+    let pollIndex = 0;
+    const transientStates = [
+      [], // 旧进程已退出
+      [{ pid: 8002, ppid: 1, user: 'u', command: 'clash-verge' }], // 发现候选 PID 8002
+      [], // 二次确认时该 PID 消失 (瞬时闪退)
+      [], // 之后无可用稳定进程
+    ];
+
+    await assert.rejects(
+      () =>
+        executeMacosLifecycleReload({
+          oldPid: 8001,
+          terminationTimeoutMs: 100,
+          readinessTimeoutMs: 50,
+          pollIntervalMs: 5,
+          killFn: () => {},
+          spawnFn: async () => {},
+          scanFn: async () => transientStates[pollIndex++] || [],
+          sleepFn: async () => {},
+        }),
+      /did not become ready and stable within bounded timeout/
     );
   });
 

@@ -13,9 +13,23 @@ export const DEFAULT_READINESS_TIMEOUT_MS = 10000;
 export const DEFAULT_POLL_INTERVAL_MS = 200;
 
 /**
- * 默认 macOS CVR 重启命令
+ * 默认 macOS CVR 重启应用名称
  */
 export const DEFAULT_MACOS_APP_NAME = 'Clash Verge';
+
+/**
+ * 构造默认 macOS 应用拉起命令行结构
+ * 依据历史 Gate B 实证路径，严格使用且仅使用参数: open -a <appName>
+ *
+ * @param {string} [appName=DEFAULT_MACOS_APP_NAME] 应用名称
+ * @returns {{ command: string, args: string[] }}
+ */
+export function buildDefaultLaunchArgs(appName = DEFAULT_MACOS_APP_NAME) {
+  return {
+    command: 'open',
+    args: ['-a', appName],
+  };
+}
 
 /**
  * 执行受控无头重载并对进程生命周期转移执行有界观测 (Bounded Lifecycle Observation)
@@ -63,7 +77,8 @@ export async function executeMacosLifecycleReload(options = {}) {
 
   const killProcess = options.killFn || ((pid, signal) => process.kill(pid, signal));
   const spawnApp = options.spawnFn || (async () => {
-    await execFileAsync('open', ['-a', appName, '--args', '--hidden']);
+    const launch = buildDefaultLaunchArgs(appName);
+    await execFileAsync(launch.command, launch.args);
   });
   const scanProcesses = options.scanFn || (() => scanMacosProcesses());
   const waitMs = options.sleepFn || sleep;
@@ -97,34 +112,45 @@ export async function executeMacosLifecycleReload(options = {}) {
     );
   }
 
-  // 3. 执行应用拉起
+  // 3. 执行应用拉起 (仅使用已实证的原生 open -a appName)
   try {
     await spawnApp();
   } catch (err) {
     throw new Error(`Failed to trigger application launch for "${appName}": ${err.message}`);
   }
 
-  // 4. 有界轮询等待新 CVR 实例就绪
+  // 4. 有界轮询等待新 CVR 实例就绪并执行稳定性二次确认 (Stabilization Confirmation)
   const readyDeadline = Date.now() + readyTimeout;
   let newPid = null;
 
   while (Date.now() < readyDeadline) {
     await waitMs(pollInterval);
     const currentProcs = await scanProcesses();
-    const newCvr = currentProcs.find((p) => {
+    const candidateCvr = currentProcs.find((p) => {
       const isCvr = p.command.includes('clash-verge') && !p.command.includes('clash-verge-service');
       return isCvr && p.pid !== oldPid;
     });
 
-    if (newCvr) {
-      newPid = newCvr.pid;
-      break;
+    if (candidateCvr) {
+      const candidatePid = candidateCvr.pid;
+      // 稳定性确认: 延迟一个轮询窗口后再次检查同一 PID 存活，杜绝单次瞬时假阳性 (Transient PID)
+      await waitMs(pollInterval);
+      const confirmProcs = await scanProcesses();
+      const confirmedAlive = confirmProcs.some((p) => {
+        const isCvr = p.command.includes('clash-verge') && !p.command.includes('clash-verge-service');
+        return isCvr && p.pid === candidatePid;
+      });
+
+      if (confirmedAlive) {
+        newPid = candidatePid;
+        break;
+      }
     }
   }
 
   if (!newPid) {
     throw new Error(
-      `New CVR process instance did not become ready within bounded timeout of ${readyTimeout}ms (Fail-Closed)`
+      `New CVR process instance did not become ready and stable within bounded timeout of ${readyTimeout}ms (Fail-Closed)`
     );
   }
 
