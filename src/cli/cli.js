@@ -274,6 +274,27 @@ export async function runVerify(options) {
 }
 
 /**
+ * 严格解析 GitHub 仓库标识字符串 (例如 "carllx/clash-fleet")
+ *
+ * @param {string|null|undefined} rawRepo 原始仓库参数
+ * @returns {{ owner: string, repo: string }}
+ */
+export function parseRepositoryIdentifier(rawRepo) {
+  if (!rawRepo) {
+    return { owner: 'carllx', repo: 'clash-fleet' };
+  }
+
+  const parts = String(rawRepo).trim().split('/');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(
+      `Invalid repository format: "${rawRepo}". Expected "owner/repo" (e.g. "carllx/clash-fleet").`
+    );
+  }
+
+  return { owner: parts[0], repo: parts[1] };
+}
+
+/**
  * 执行 deploy 命令 (部署事务前半段: Discover -> Fetch -> Checksum -> Boa Preflight -> Backup -> Atomic Replace)
  *
  * @param {object} options 部署选项
@@ -292,14 +313,17 @@ export async function runDeploy(options) {
     );
   }
 
+  const { owner, repo } = parseRepositoryIdentifier(options.repo);
+
   console.log(`[fleet:deploy] Starting deployment transaction for version: ${version}`);
   console.log(`[fleet:deploy] Target script: ${path.resolve(target)}`);
+  console.log(`[fleet:deploy] Authority: GitHub Releases (${owner}/${repo})`);
 
   const result = await executeDeploymentTransaction({
     version,
     target,
-    owner: options.repo ? options.repo.split('/')[0] : 'carllx',
-    repo: options.repo ? (options.repo.includes('/') ? options.repo.split('/')[1] : options.repo) : 'clash-fleet',
+    owner,
+    repo,
     token: options.token,
     boaPath: options.boaPath,
     source: options.source,

@@ -198,22 +198,32 @@ export class GitHubReleaseSource {
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // 若 asset 自带 authoritative sha256 digest，执行预下载校验
-    const rawDigest = asset.digest || asset.sha256;
-    if (rawDigest) {
-      const parsedDigest = parseAndValidateSha256Digest(rawDigest);
-      if (!parsedDigest.valid) {
-        throw new Error(`Invalid asset digest for "${asset.name}": ${parsedDigest.error}`);
-      }
-      const actualHash = crypto.createHash('sha256').update(buffer).digest('hex');
-      if (actualHash !== parsedDigest.hash) {
-        throw new Error(
-          `Asset "${asset.name}" digest mismatch: expected sha256:${parsedDigest.hash}, downloaded sha256:${actualHash}`
-        );
-      }
-    }
+    // 校验 asset 自带的权威 SHA-256 摘要 (Fail-Closed)
+    assertAssetBufferDigest(asset, buffer);
 
     fs.writeFileSync(destinationPath, buffer);
+  }
+}
+
+/**
+ * 校验下载内容与 asset 元数据声明的权威 SHA-256 摘要完全一致 (Fail-Closed)
+ *
+ * @param {object} asset 目标资产对象
+ * @param {Buffer} buffer 下载的二进制内容
+ */
+export function assertAssetBufferDigest(asset, buffer) {
+  const rawDigest = asset.digest || asset.sha256;
+  if (!rawDigest) return;
+
+  const parsedDigest = parseAndValidateSha256Digest(rawDigest);
+  if (!parsedDigest.valid) {
+    throw new Error(`Invalid asset digest for "${asset.name}": ${parsedDigest.error}`);
+  }
+  const actualHash = crypto.createHash('sha256').update(buffer).digest('hex');
+  if (actualHash !== parsedDigest.hash) {
+    throw new Error(
+      `Asset "${asset.name}" digest mismatch: expected sha256:${parsedDigest.hash}, downloaded sha256:${actualHash}`
+    );
   }
 }
 
@@ -254,20 +264,8 @@ export class FixtureReleaseSource {
     const rawContent = this.files[asset.name];
     const buffer = Buffer.isBuffer(rawContent) ? rawContent : Buffer.from(String(rawContent), 'utf8');
 
-    // 若 asset 带有 digest，验证下载内容
-    const rawDigest = asset.digest || asset.sha256;
-    if (rawDigest) {
-      const parsedDigest = parseAndValidateSha256Digest(rawDigest);
-      if (!parsedDigest.valid) {
-        throw new Error(`Invalid asset digest for "${asset.name}": ${parsedDigest.error}`);
-      }
-      const actualHash = crypto.createHash('sha256').update(buffer).digest('hex');
-      if (actualHash !== parsedDigest.hash) {
-        throw new Error(
-          `Asset "${asset.name}" digest mismatch: expected sha256:${parsedDigest.hash}, downloaded sha256:${actualHash}`
-        );
-      }
-    }
+    // 校验 asset 自带的权威 SHA-256 摘要 (Fail-Closed)
+    assertAssetBufferDigest(asset, buffer);
 
     fs.writeFileSync(destinationPath, buffer);
   }

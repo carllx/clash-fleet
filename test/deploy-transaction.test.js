@@ -487,6 +487,22 @@ test('Deployment Transaction Suite (Discover -> Fetch -> Checksum -> Boa Preflig
       );
     });
 
+    await st.test('fails when repo option has invalid format', async () => {
+      await assert.rejects(
+        () =>
+          execFileAsync(process.execPath, [
+            CLI_PATH,
+            'deploy',
+            'v1.0.0',
+            '--target',
+            targetScript,
+            '--repo',
+            'invalid-no-slash',
+          ]),
+        (err) => err.code !== 0 && /Invalid repository format/i.test(err.stderr || err.stdout)
+      );
+    });
+
     await st.test('fails when version is missing', async () => {
       await assert.rejects(
         () => execFileAsync(process.execPath, [CLI_PATH, 'deploy', '--target', targetScript]),
