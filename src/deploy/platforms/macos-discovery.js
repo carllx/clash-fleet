@@ -20,10 +20,12 @@ export const DEFAULT_MACOS_DATA_DIR_NAME = 'io.github.clash-verge-rev.clash-verg
  */
 export function sanitizePath(rawPath, homeDir = os.homedir()) {
   if (!rawPath || typeof rawPath !== 'string') return '';
-  if (homeDir && rawPath.startsWith(homeDir)) {
-    return rawPath.replace(homeDir, '~');
+  const normalizedRaw = rawPath.replace(/\\/g, '/');
+  const normalizedHome = homeDir ? homeDir.replace(/\\/g, '/') : '';
+  if (normalizedHome && normalizedRaw.startsWith(normalizedHome)) {
+    return normalizedRaw.replace(normalizedHome, '~');
   }
-  return rawPath;
+  return normalizedRaw;
 }
 
 /**
