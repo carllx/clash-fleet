@@ -225,7 +225,7 @@ export async function executeDeploymentTransaction(options = {}) {
     const replaceResult = atomicReplaceFile(resolvedTarget, candidateScriptPath);
 
     // 8. Explicit Lifecycle Boundary (明确声明构件已落地但未激活，等待后续生命周期触发)
-    return {
+    const baseResult = {
       status: 'STAGED_NOT_APPLIED',
       transaction: 'SUCCESS_PRE_LIFECYCLE',
       target: resolvedTarget,
@@ -239,6 +239,12 @@ export async function executeDeploymentTransaction(options = {}) {
         'Target Script.js atomically replaced with verified candidate. ' +
         'CVR restart, Mihomo reloading, and network runtime verification have NOT been triggered.',
     };
+
+    if (options.platformAdapter && typeof options.platformAdapter.executeStep7 === 'function') {
+      return await options.platformAdapter.executeStep7(baseResult, options.triggerOptions);
+    }
+
+    return baseResult;
   } finally {
     // 确定性清理临时 staging 目录 (保证无任何垃圾遗留)
     try {

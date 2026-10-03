@@ -33,7 +33,8 @@ Clash Fleet CLI - 多设备配置分发与确定性构建工具链
     build      打包模块化 JavaScript 源码为 CVR 兼容的单一 Script.js 并生成 Rule Asset Provenance 清单 (强制执行 Boa 0.22 门禁)
     package    确定性打包发布资产 (Script.js, RULE_ASSET_PROVENANCE.json, SHA256SUMS.txt) 并执行机密安全门禁
     verify     使用 Boa 0.22 门禁验证目标 Script.js 的语法与契约
-    deploy     执行部署事务前半段 (发现 -> 下载 -> 校验和 -> Boa 预检 -> 备份 -> 原子替换)
+    deploy     执行部署事务 (发现 -> 下载 -> 校验和 -> Boa 预检 -> 备份 -> 原子替换 -> 可选重载)
+    probe      只读探测宿主平台的 CVR 路径与进程拓扑 (macOS/Windows)
 
   选项 (build):
     --input, -i             入口文件路径 (默认: src/index.js)
@@ -49,7 +50,8 @@ Clash Fleet CLI - 多设备配置分发与确定性构建工具链
     --input, -i             待验证脚本路径 (默认: dist/Script.js，亦支持位置参数传入)
 
   选项 (deploy):
-    --target, -t            目标 Script.js 文件路径 (必选或通过 FLEET_TARGET_SCRIPT 环境变量注入)
+    --target, -t            目标 Script.js 文件路径 (可选，未指定时由平台适配器动态发现)
+    --reload                替换成功后触发受控生命周期优雅重载 (Step 7)
     --repo                  GitHub 仓库 (默认: carllx/clash-fleet)
     --token                 GitHub API Token (可选)
     --boa-path              自定义 Boa 可执行文件路径 (可选)
@@ -81,37 +83,33 @@ export function parseArgs(args) {
     token: null,
     boaPath: null,
     source: null,
+    reload: false,
+  };
+
+  const flagMap = {
+    '--input': 'input', '-i': 'input',
+    '--output': 'output', '-o': 'output',
+    '--providers': 'providers', '-p': 'providers',
+    '--provenance-output': 'provenanceOutput',
+    '--dist-dir': 'distDir',
+    '--package-dir': 'packageDir',
+    '--target': 'target', '-t': 'target',
+    '--repo': 'repo',
+    '--token': 'token',
+    '--boa-path': 'boaPath',
+    '--source': 'source',
   };
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--input' || arg === '-i') {
-      parsed.input = args[++i];
-    } else if (arg === '--output' || arg === '-o') {
-      parsed.output = args[++i];
-    } else if (arg === '--providers' || arg === '-p') {
-      parsed.providers = args[++i];
-    } else if (arg === '--provenance-output') {
-      parsed.provenanceOutput = args[++i];
-    } else if (arg === '--dist-dir') {
-      parsed.distDir = args[++i];
-    } else if (arg === '--package-dir') {
-      parsed.packageDir = args[++i];
-    } else if (arg === '--target' || arg === '-t') {
-      parsed.target = args[++i];
-    } else if (arg === '--repo') {
-      parsed.repo = args[++i];
-    } else if (arg === '--token') {
-      parsed.token = args[++i];
-    } else if (arg === '--boa-path') {
-      parsed.boaPath = args[++i];
-    } else if (arg === '--source') {
-      parsed.source = args[++i];
+    if (arg in flagMap) {
+      parsed[flagMap[arg]] = args[++i];
+    } else if (arg === '--reload' || arg === '--trigger-reload') {
+      parsed.reload = true;
     } else if (!arg.startsWith('-')) {
       if (parsed.command === 'deploy' && !parsed.version) {
         parsed.version = arg;
       } else if (!parsed.input) {
-        // 捕获首个位置参数 (例如: fleet verify dist/Script.js)
         parsed.input = arg;
       }
     }
@@ -295,7 +293,31 @@ export function parseRepositoryIdentifier(rawRepo) {
 }
 
 /**
- * 执行 deploy 命令 (部署事务前半段: Discover -> Fetch -> Checksum -> Boa Preflight -> Backup -> Atomic Replace)
+ * 执行 probe 命令 (只读探测宿主平台的 CVR 路径与进程拓扑)
+ *
+ * @param {object} options 探测选项
+ */
+export async function runProbe(options = {}) {
+  if (process.platform === 'darwin') {
+    const { MacOSPlatformAdapter } = await import('../deploy/platforms/macos-adapter.js');
+    const adapter = new MacOSPlatformAdapter({ customDataDir: options.target });
+    const report = await adapter.probe();
+    console.log('[fleet:probe] macOS Platform Topology Report:');
+    console.log(`  - Platform: ${report.platform}`);
+    console.log(`  - Data Dir: ${report.paths.sanitizedDataDir}`);
+    console.log(`  - Target Script Exists: ${report.paths.exists}`);
+    console.log(`  - Topology: ${report.topology} (Passed: ${report.topologyPassed}, Level: ${report.evidenceLevel})`);
+    console.log(`  - Detail: ${report.detail}`);
+    if (report.processes.cvr) console.log(`  - CVR PID: ${report.processes.cvr.pid} (${report.processes.cvr.user})`);
+    if (report.processes.mihomo) console.log(`  - Mihomo PID: ${report.processes.mihomo.pid} (${report.processes.mihomo.user})`);
+    if (report.processes.service) console.log(`  - Service PID: ${report.processes.service.pid} (${report.processes.service.user})`);
+    return report;
+  }
+  throw new Error(`Platform "${process.platform}" probe is not yet implemented (belongs to #9)`);
+}
+
+/**
+ * 执行 deploy 命令 (部署事务: Discover -> Fetch -> Checksum -> Boa Preflight -> Backup -> Atomic Replace -> 可选 Step 7)
  *
  * @param {object} options 部署选项
  */
@@ -305,11 +327,27 @@ export async function runDeploy(options) {
     throw new Error('Deployment version must be specified: fleet deploy <version>');
   }
 
-  const target = options.target || process.env.FLEET_TARGET_SCRIPT;
+  let target = options.target || process.env.FLEET_TARGET_SCRIPT;
+  let platformAdapter = null;
+
+  if (process.platform === 'darwin') {
+    const { MacOSPlatformAdapter } = await import('../deploy/platforms/macos-adapter.js');
+    const { resolveMacosPaths } = await import('../deploy/platforms/macos-discovery.js');
+    if (!target) {
+      const discovered = resolveMacosPaths();
+      if (discovered.exists) {
+        target = discovered.targetScript;
+      }
+    }
+    if (options.reload) {
+      platformAdapter = new MacOSPlatformAdapter();
+    }
+  }
+
   if (!target) {
     throw new Error(
       'Target script path must be specified via --target <path> or FLEET_TARGET_SCRIPT ' +
-      '(Platform adapter topology discovery belongs to #8/#9).'
+      '(or automatically discovered in supported platform default paths).'
     );
   }
 
@@ -327,9 +365,10 @@ export async function runDeploy(options) {
     token: options.token,
     boaPath: options.boaPath,
     source: options.source,
+    platformAdapter,
   });
 
-  console.log(`[fleet:deploy] Deployment Transaction PASSED (Steps 1–6):`);
+  console.log(`[fleet:deploy] Deployment Transaction PASSED:`);
   console.log(`  - Status: ${result.status}`);
   console.log(`  - Target: ${result.target}`);
   console.log(`  - Backup: ${result.backup} (SHA-256: ${result.backupSha256})`);
@@ -371,6 +410,9 @@ export async function runCli(rawArgs) {
       break;
     case 'deploy':
       await runDeploy(parsed);
+      break;
+    case 'probe':
+      await runProbe(parsed);
       break;
     case 'help':
       printHelp();
