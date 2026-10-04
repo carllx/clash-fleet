@@ -5,7 +5,7 @@
 **证据基线**：
 - 宿主实测只读快照：macOS arm64，CVR 2.5.7，Mihomo Meta v1.19.32
 - 上游正式发布版：`clash-verge-rev/clash-verge-rev` tag `v2.5.7`（commit `ea509b82363a40c3c32e951d7ce9d66d66da411f`）
-- 上游审查固定 Ref：`clash-verge-rev/clash-verge-rev@1a01844cb817c41e5e6b628d15e929787402187a`（领先 v2.5.7 共 11 commits，核心管理/脚本层 0 diff）
+- 上游审查固定 Ref：`clash-verge-rev/clash-verge-rev@1a01844cb817c41e5e6b628d15e929787402187a`（领先 v2.5.7 共 11 commits / 0 behind）
 
 ---
 
@@ -26,12 +26,15 @@
 | 维度 | A. 用户当前安装版 (Installed) | B. 当前正式稳定版 (Stable Release) | C. 已审查固定 Ref (Fixed Dev) |
 |---|---|---|---|
 | **CVR 版本 / Tag** | 2.5.7 | v2.5.7 | dev (`1a01844`) |
-| **Git Commit SHA** | *(等价于 ea509b8)* | `ea509b82363a40c3c32e951d7ce9d66d66da411f` | `1a01844cb817c41e5e6b628d15e929787402187a` |
+| **Git Commit SHA** | *未独立证明源码 Commit（见说明）* | `ea509b82363a40c3c32e951d7ce9d66d66da411f` | `1a01844cb817c41e5e6b628d15e929787402187a` |
 | **Mihomo 内核版本** | Meta v1.19.32 darwin arm64 | v1.19.32 附带打包 | 代码声明依赖 / 最新打包 |
 | **Service 组件版本** | 2.5.7 (XPC LaunchDaemon) | 2.5.7 bundle | `clash-verge-service-ipc` 源码 |
 | **当前运行模式** | **Service 模式** (PPID=18206 LaunchDaemon) | 支持 Service / Sidecar | 支持 Service / Sidecar |
 | **构建 / 安装来源** | 官方 Release DMG 签名 (Mach-O thin arm64) | GitHub Releases | 源码仓库构建 |
 | **凭证与证据来源** | `Info.plist`, `codesign`, `ps -Ao pid,ppid,command` | GitHub Release API, Git Tag Object | GitHub Git Commit Tree & Blob API |
+
+> [!NOTE] 关于已安装版本源码溯源 (Installed Provenance) 的精确边界
+> 宿主只读观测证实：已安装应用汇报版本为 2.5.7，且具备官方发布 DMG 的代码签名证据。但在通过二进制构建哈希与发布资产进行密码学溯源比对前，**不能在证据层面独立证明本地二进制完全等价于 commit `ea509b8...`**。
 
 ### 2.2 核心能力与行为矩阵 (Capabilities & Semantics)
 
@@ -48,7 +51,16 @@
 | **丢包与失联对账 (Reconciliation)**| **不具备**（内部异步通知，无持久事务收据）| **不具备** | **不具备** | **Verified**: 缺乏持久事务与查询机制 |
 | **原子回滚语义 (Rollback)** | 局部（仅源文件覆盖；runtime 已落盘不回滚）| 局部 | 局部 | **Verified**: `src-tauri/src/cmd/save_profile.rs#L93-L103` |
 | **外部调用者鉴权 / 授权** | 仅单例 Token（无外部 Apply 接口） | 仅单例 Token | 仅单例 Token | **Verified**: `src-tauri/src/utils/server.rs#L163,L201` |
-| **外部受支持 Apply 接口** | **无 (None)** | **无 (None)** | **无 (None)** | **Verified**: `src-tauri/src/utils/server.rs#L189-L280` |
+| **外部受支持 Apply 接口** | **未发现受支持的完整外部 Apply 接口** | **未发现受支持的完整外部 Apply 接口** | **未发现受支持的完整外部 Apply 接口** | **Verified**: 详见 4 节接口面审查 |
+
+> [!NOTE] 关于 Stable (`ea509b8...`) 与 Fixed Dev (`1a01844...`) 的源码一致性范围
+> 经独立验证，以下 4 个配置与脚本管理核心文件在两版本间**逐字节完全一致 (byte-for-byte identical, 0 diff)**：
+> 1. `src-tauri/src/cmd/save_profile.rs`
+> 2. `src-tauri/src/enhance/script.rs`
+> 3. `src-tauri/src/enhance/mod.rs`
+> 4. `src-tauri/src/core/manager/config.rs`
+>
+> 需明确指出：`src-tauri/src/utils/server.rs` 与 `src-tauri/src/core/service.rs` 在两版本间存在提交差异，**并非 byte-for-byte identical，因此不能泛化为整个 integration/service 层 0 diff**。但检查证实两版本中的 `server.rs` 暴露的命令面完全一致（均仅有 `visible`、`pac`、`scheme` 及 dev 构建特有的 `quit`），均未暴露任何外部配置 Apply 契约。
 
 ---
 
@@ -73,7 +85,7 @@
    ```
    - 若当前 Profile 绑定了专属脚本 `item.current_script() == Some("custom-script-id")`，数组计算结果为 `["...", "custom-script-id", ...]`, **完全不包含 `"Script"`**。
    - 当保存全局扩展脚本（`index == "Script"`）时，`profile_affects_runtime()` 返回 **`false`**。
-   - 结果：`handle_saved_profile_file` 中的 `affects_runtime` 为 `false`，**完全跳过 `ConfigManager::update_current_runtime()`**。
+   - 结果：`handle_saved_profile_file`（`save_profile.rs#L58-L82`）仅在 `affects_runtime == true` 时调用 `CoreManager::global().update_config_forced().await`。由于判定为 `false`，**该更新与重载调用被完全跳过**。
 
 2. **运行时增强执行**：[`src-tauri/src/enhance/mod.rs#L205-L287`](https://github.com/clash-verge-rev/clash-verge-rev/blob/1a01844cb817c41e5e6b628d15e929787402187a/src-tauri/src/enhance/mod.rs#L205-L287)：
    ```rust
@@ -123,7 +135,7 @@
   2. `GET /commands/visible`：唤醒窗口前台显示；
   3. `GET /commands/pac`：返回动态生成的 PAC 文件；
   4. `GET /commands/scheme?param=...`：解析 deep link（`clash://install-config` 等订阅导入，异步且无事务结果）。
-- **结论 (Verified)**：**不存在任何 Profile 保存、代码校验、配置 Apply 或状态查询的 HTTP 接口。**
+- **结论 (Verified)**：**在本次检查的本地 HTTP 服务接口面中，未发现受支持的完整第三方 Profile 保存、校验或 Apply 接口。**
 
 ### 4.4 clash-verge-service 特权 IPC
 - **通讯方式**：Unix Domain Socket（macOS `/var/run/clash-verge-service/service.sock`）/ Windows Named Pipe
@@ -138,11 +150,11 @@
 ## 5. 核心问题明确解答 (Mandatory Direct Answers)
 
 1. **用户当前安装版有没有可用的正式 external apply seam？**  
-   **答：没有 (None)。**
+   **答：在本次检查的 installed 接口面中，未发现受支持的完整第三方 apply 接口。** (No supported complete external apply seam was found in the inspected surfaces.)
 2. **stable release 有没有？**  
-   **答：没有 (None)。**
+   **答：在本次检查的 stable release 接口面中，未发现受支持的完整第三方 apply 接口。**
 3. **fixed dev 有没有？**  
-   **答：没有 (None)。**
+   **答：在本次检查的 fixed dev 接口面中，未发现受支持的完整第三方 apply 接口。**
 4. **哪些只是 CVR 内部能力？**  
    **答：** Script/Profile 保存校验、Boa 增强执行、配置 YAML 拼装、Service 资产 staging、协调 Service 重载/替换 core、Profile 切换回滚。全部为 CVR 内部私有实现。
 5. **Mihomo API 可以替我们解决哪些问题？**  
@@ -166,10 +178,24 @@
 
 ## 6. 最小上游接口提议草案 (Minimal Upstream API Proposal)
 
-为未来与上游 CVR 协作，建议在 CVR 内置 loopback server（`server.rs`）中新增最小受限 Apply 契约：
+为未来与上游 CVR 协作，本节提出一个最小外部 Apply 契约的设计构想（Proposed Design Requirements）。
 
-- **端点**：`POST /commands/profile/apply`
-- **认证**：标头携带 `x-instance-token`（复用现有单例 token），同操作系统用户限制；
+> [!WARNING] 设计需求与当前安全状态的严格区分
+> 本节所列的 `x-instance-token` 鉴权、同操作系统用户限制 (same-OS-user restriction) 以及 `POST /commands/profile/apply` 端点**均属于提议的设计需求 (Proposed Design Requirements)，绝非当前 CVR 本地 HTTP 服务器已验证具备的安全保证**。
+> 
+> 后续若正式推进接口设计与上游贡献，必须单独严格评估以下安全与架构要素：
+> 1. **本地进程鉴权 (Local-process authentication)**：如何防止未授权的同主机应用冒充调用者；
+> 2. **浏览器环境与 CSRF 暴露风险 (Browser / CSRF exposure)**：由于监听在 Loopback HTTP 端口，必须防范恶意网页通过前端脚本向本地端点发起跨域攻击（CORS、预检、自定义 Header 校验）；
+> 3. **Token 生命周期管理 (Token lifecycle)**：单例 Token 的轮转、落盘安全与失效机制；
+> 4. **请求体积与内容边界 (Request size / content limits)**：针对脚本与配置内容的体积限制与拒绝服务防范；
+> 5. **幂等性与重试支持 (Idempotency)**：避免网络重试导致的重复 Apply 或状态震荡；
+> 6. **最小权限原则 (Least privilege)**：仅开放特定 Profile/Script 的热更新，严禁退化为通用的任意文件写入；
+> 7. **通信协议选型 (HTTP vs Unix Domain Socket / Local IPC)**：评估使用本地 Unix Domain Socket 或平台原生 IPC 替代 Loopback HTTP 的可行性，以彻底规避浏览器网络栈暴露面。
+
+### 6.1 提议的草案规范 (Draft Contract)
+
+- **建议端点**：`POST /commands/profile/apply`
+- **建议认证**：标头携带 `x-instance-token`，强制同操作系统用户校验；
 - **请求负载 (Request Body)**：
   ```json
   {
@@ -186,13 +212,13 @@
   - `Skipped`: 防抖抑制或当前退出中；
   - `Invalid`: 语法或 YAML 校验失败（附带脱敏错误信息）；
   - `Unknown`: 已触发但核心未能确认响应。
-- **状态对账端点**：`GET /commands/profile/status?request_id=...`，确保网络波动或客户端失联时可幂等恢复。
+- **状态对账端点**：`GET /commands/profile/status?request_id=...`，确保客户端失联时可幂等恢复。
 
 ---
 
 ## 7. 结论与下阶段行动
 
-1. **架构收敛**：确认 CVR 缺乏外部正式 Apply seam。Clash Fleet vNext 确定采用 **“只读诊断 + 原生 UI 交付/辅助通知 + Mihomo 语义验证”** 为核心闭环。
+1. **架构收敛**：在本次检查的接口面中未发现受支持的完整外部 Apply 接口。Clash Fleet vNext 确定采用 **“只读诊断 + 原生 UI 交付/辅助通知 + Mihomo 语义验证”** 为核心闭环。
 2. **遗留问题解冻**：
    - #8 终止 B2，按只读 discovery 裁剪；
    - 启动 #14 (只读网络诊断 MVP) 与 #15 (规则审计与薄 Service Profile) 作为主攻方向。
