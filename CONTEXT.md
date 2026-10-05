@@ -56,9 +56,25 @@ _Avoid_: Node group, country group
 ### 部署与生命周期 (Deployment & Lifecycle)
 
 **Deployment Transaction**:
-包含拉取、预检、备份、写入、生命周期触发、多维运行时验证与失败自愈回滚的原子部署流水线。
-_Avoid_: Update script, sync process
+包含拉取、预检、备份、写入与多维校验的原子部署过程，用于将 Build Artifact 安全交付至目标宿主。
+_Avoid_: Update script, sync process, restart sequence
 
 **Runtime Verification**:
-部署触发后对 CVR/Mihomo 进程存活、生成配置的语义不变量结构以及有效代理连通性执行的综合验证。
-_Avoid_: Health check, ping test
+变更触发后，通过只读观测内核运行态、规则装载与策略组结构，对业务网络意图后置条件执行的证据验证。
+_Avoid_: Health check, ping test, process survival check
+
+**Change Operation**:
+一次由唯一 Operation ID 标识、围绕 Change Intent、Logical Target、证据收集、状态对账与恢复所管理的策略变更全生命周期。
+_Avoid_: Config update, script edit, patch run
+
+**Logical Target**:
+Fleet 能够稳定识别并绑定的一项 CVR/Fleet 配置业务实体，与底层文件路径、运行时 PID 等瞬态事实解耦。
+_Avoid_: Target path, config file, process target
+
+**Reconciliation**:
+在动作发生或结果未知后，基于逻辑目标源码摘要与内核实际运行态证据，重新确定真实激活状态的过程。
+_Avoid_: Polling, health probe, sync check
+
+**Recovery Snapshot**:
+变更发生前捕获的只读源文件不可变证据，用于对账失配时的恢复参考；不自动等同于已知良好配置。
+_Avoid_: Backup file, current config, auto rollback point
